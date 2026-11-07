@@ -15,6 +15,8 @@ Open http://localhost:3000 on the laptop. Other devices use a reachable server U
 
 Configuration goes in `.env.local`. Copy `.env.example` for the available options. SQLite defaults to `.aftermap/drill.sqlite`. Set `AFTERMAP_DB_PATH` to the file on your persistent volume. Treat the drill URL as a temporary exercise link and use nicknames and fictional reports.
 
+For Vercel, deploy the web directory and set AFTERMAP_API_ORIGIN to the HTTPS URL of the shared Node server. Vercel serves the map and forwards API requests to that server. SQLite, drone processing, and the local model stay on the Node host.
+
 ## Run the live demo
 
 1. Project the laptop and open **Drone View** to show historical aerial imagery. To demonstrate import, choose **Import imagery**, select the two prepared overlapping Mexico Beach GeoTIFFs and wait for the aerial layer. Return to **Field Map**.

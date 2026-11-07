@@ -5,3 +5,4 @@ node_modules/
 .aftermap/
 next-env.d.ts
 *.tsbuildinfo
+.vercel/
