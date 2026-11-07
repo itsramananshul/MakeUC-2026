@@ -94,6 +94,17 @@ final class SessionStore: ObservableObject {
 
     func confirmPosition(checkpointId: String) async -> Bool {
         guard let observerId else { return false }
+#if DEBUG
+        if isPreviewMode {
+            guard var state = snapshot else { return false }
+            if let index = state.participants.firstIndex(where: { $0.id == observerId }) {
+                state.participants[index].checkpointId = checkpointId
+            }
+            state.version += 1
+            accept(state)
+            return true
+        }
+#endif
         isBusy = true
         defer { isBusy = false }
         do {
@@ -103,12 +114,41 @@ final class SessionStore: ObservableObject {
     }
 
     func interpret(_ request: InterpretRequest) async throws -> InterpretResponse {
+#if DEBUG
+        if isPreviewMode {
+            let destination = snapshot?.nodes.first(where: { $0.id != request.checkpointId })?.id
+            return InterpretResponse(
+                suggestion: AISuggestion(kind: .passage, from: request.checkpointId, to: destination, nodeId: nil, status: .blocked, confidence: 0.78, note: request.note),
+                message: "Preview AI suggestion for simulator verification."
+            )
+        }
+#endif
         isBusy = true
         defer { isBusy = false }
         return try await client.interpret(request)
     }
 
     func submit(_ request: ObservationRequest) async -> Bool {
+#if DEBUG
+        if isPreviewMode {
+            guard var state = snapshot else { return false }
+            state.observations.append(ObservationRecord(
+                id: request.id, observerId: request.observerId, checkpointId: request.checkpointId,
+                kind: request.kind.rawValue, from: request.from, to: request.to, nodeId: request.nodeId,
+                status: request.status?.rawValue, evidenceType: request.evidenceType, confidence: request.confidence,
+                note: request.note, confirmed: request.confirmed, createdAt: ISO8601DateFormatter().string(from: Date())
+            ))
+            if request.kind == .passage, let from = request.from, let to = request.to,
+               let index = state.edges.firstIndex(where: { Set([$0.from, $0.to]) == Set([from, to]) }), let status = request.status {
+                state.edges[index].state = status
+                state.edges[index].observationIds.append(request.id)
+            }
+            state.version += 1
+            accept(state)
+            bannerMessage = "Confirmed report added to the shared map."
+            return true
+        }
+#endif
         isBusy = true
         defer { isBusy = false }
         do {

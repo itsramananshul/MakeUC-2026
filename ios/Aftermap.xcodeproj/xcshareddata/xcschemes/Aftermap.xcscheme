@@ -50,6 +50,17 @@
                ReferencedContainer = "container:Aftermap.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "4F4A6BA4BD74F3176D0EDA20"
+               BuildableName = "AftermapUITests.xctest"
+               BlueprintName = "AftermapUITests"
+               ReferencedContainer = "container:Aftermap.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>

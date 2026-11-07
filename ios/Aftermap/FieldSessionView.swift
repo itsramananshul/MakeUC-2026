@@ -97,6 +97,7 @@ struct FieldSessionView: View {
                         .foregroundStyle(AftermapTheme.navy)
                         .background(AftermapTheme.mint, in: RoundedRectangle(cornerRadius: 14))
                 }
+                .accessibilityIdentifier("map.addReport")
                 Text("DRILL ONLY • Candidate route is not a safety assurance.")
                     .font(.caption2.weight(.bold)).foregroundStyle(AftermapTheme.amber)
             }

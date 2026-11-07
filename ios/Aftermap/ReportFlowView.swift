@@ -125,6 +125,7 @@ struct ReportFlowView: View {
                     if await store.confirmPosition(checkpointId: checkpointId) { fromId = checkpointId; if nodeId.isEmpty { nodeId = checkpointId }; stage = .evidence }
                 }
             } label: { primaryLabel(store.isBusy ? "Confirming…" : "Confirm position", icon: "location.fill") }
+            .accessibilityIdentifier("report.confirmPosition")
             .disabled(checkpointId.isEmpty || store.isBusy)
         }
     }
@@ -163,6 +164,7 @@ struct ReportFlowView: View {
             Button { Task { await prepareReview() } } label: {
                 primaryLabel(evidence == .manual ? "Review manual report" : (isInterpreting ? "Interpreting…" : "Ask AI to interpret"), icon: evidence == .manual ? "checklist" : "sparkles")
             }
+            .accessibilityIdentifier("report.prepareReview")
             .disabled(isInterpreting || store.isBusy || !canContinue)
         }
     }
@@ -227,6 +229,7 @@ struct ReportFlowView: View {
             .aftermapPanel()
 
             Button { Task { await submitConfirmed() } } label: { primaryLabel(store.isBusy ? "Submitting…" : "Confirm and update shared map", icon: "checkmark.shield.fill") }
+                .accessibilityIdentifier("report.submit")
                 .disabled(store.isBusy)
             Button("Go back and edit") { stage = .evidence }.frame(maxWidth: .infinity)
         }

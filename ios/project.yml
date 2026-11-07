@@ -41,6 +41,7 @@ targets:
     scheme:
       testTargets:
         - AftermapTests
+        - AftermapUITests
   AftermapTests:
     type: bundle.unit-test
     platform: iOS
@@ -51,5 +52,16 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.makeuc.aftermap.tests
+        GENERATE_INFOPLIST_FILE: YES
+  AftermapUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: AftermapUITests
+    dependencies:
+      - target: Aftermap
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.makeuc.aftermap.uitests
         GENERATE_INFOPLIST_FILE: YES
 
