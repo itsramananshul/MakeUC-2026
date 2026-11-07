@@ -1,0 +1,9 @@
+# Xcode user state and local build products
+**/xcuserdata/
+**/*.xcuserstate
+DerivedData/
+ios/build/
+
+# macOS
+.DS_Store
+

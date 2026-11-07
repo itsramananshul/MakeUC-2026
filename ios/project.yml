@@ -1,0 +1,67 @@
+name: Aftermap
+options:
+  bundleIdPrefix: com.makeuc
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "16.4"
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    DEVELOPMENT_TEAM: ""
+targets:
+  Aftermap:
+    type: application
+    platform: iOS
+    sources:
+      - path: Aftermap
+    info:
+      path: Aftermap/Info.plist
+      properties:
+        CFBundleDisplayName: AFTERMAP
+        LSApplicationCategoryType: public.app-category.navigation
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSCameraUsageDescription: "AFTERMAP scans drill checkpoint QR codes and captures evidence photos you choose to submit."
+        NSLocalNetworkUsageDescription: "AFTERMAP connects to the field-drill server running on your local network."
+        NSMicrophoneUsageDescription: "AFTERMAP records your drill report while speech transcription is active."
+        NSPhotoLibraryUsageDescription: "AFTERMAP lets you select a drill evidence photo when the camera is unavailable."
+        NSSpeechRecognitionUsageDescription: "AFTERMAP transcribes your spoken drill report into editable text."
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.makeuc.aftermap
+        PRODUCT_MODULE_NAME: Aftermap
+        DEFINES_MODULE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+    scheme:
+      testTargets:
+        - AftermapTests
+        - AftermapUITests
+  AftermapTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: AftermapTests
+    dependencies:
+      - target: Aftermap
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.makeuc.aftermap.tests
+        GENERATE_INFOPLIST_FILE: YES
+  AftermapUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: AftermapUITests
+    dependencies:
+      - target: Aftermap
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.makeuc.aftermap.uitests
+        GENERATE_INFOPLIST_FILE: YES
+
