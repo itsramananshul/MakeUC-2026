@@ -29,7 +29,7 @@ struct FieldSessionView: View {
         .sheet(isPresented: $showingSettings) { SettingsView() }
         .onAppear {
 #if DEBUG
-            if ProcessInfo.processInfo.arguments.contains("-aftermapReport") { showingReport = true }
+            if ProcessInfo.processInfo.arguments.contains("-aftermapReport") || ProcessInfo.processInfo.environment["AFTERMAP_REPORT"] == "1" { showingReport = true }
 #endif
         }
     }

@@ -58,6 +58,7 @@ struct LiveMapView: View {
                     let point = MapTransform(size: geometry.size).point(node)
                     Button { selectedNode = node } label: { Color.clear.frame(width: 48, height: 48).contentShape(Circle()) }
                         .position(point)
+                        .accessibilityIdentifier("map.node.\(node.id)")
                         .accessibilityLabel("\(node.label), \(node.kind.rawValue). Tap for current field details.")
                 }
 

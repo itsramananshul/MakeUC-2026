@@ -25,9 +25,9 @@ final class SessionStore: ObservableObject {
         serverURL = defaults.string(forKey: "aftermap.serverURL") ?? "http://localhost:3000"
         sessionCode = defaults.string(forKey: "aftermap.sessionCode") ?? "WESTHALL"
         displayName = defaults.string(forKey: "aftermap.displayName") ?? ""
-        observerId = defaults.string(forKey: "aftermap.observerId")
+        observerId = defaults.string(forKey: "aftermap.observerId").flatMap { $0.isEmpty ? nil : $0 }
 #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-aftermapPreview") {
+        if ProcessInfo.processInfo.arguments.contains("-aftermapPreview") || ProcessInfo.processInfo.environment["AFTERMAP_PREVIEW"] == "1" {
             isPreviewMode = true
             observerId = "p1"
             displayName = "Preview Observer"
@@ -179,7 +179,7 @@ final class SessionStore: ObservableObject {
     }
 
     private func startPolling() {
-        guard foregrounded, isJoined, pollTask == nil else { return }
+        guard !isPreviewMode, foregrounded, isJoined, pollTask == nil else { return }
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))

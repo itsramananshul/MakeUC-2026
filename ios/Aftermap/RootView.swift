@@ -66,6 +66,7 @@ struct JoinView: View {
                         .foregroundStyle(AftermapTheme.navy)
                         .background(AftermapTheme.mint, in: RoundedRectangle(cornerRadius: 14))
                     }
+                    .accessibilityIdentifier("join.submit")
                     .disabled(store.isBusy || displayName.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
                 .aftermapPanel()
