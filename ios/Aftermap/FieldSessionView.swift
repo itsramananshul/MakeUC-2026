@@ -9,7 +9,7 @@ struct FieldSessionView: View {
         ZStack(alignment: .bottom) {
             Group {
                 if let snapshot = store.snapshot {
-                    LiveMapView(snapshot: snapshot, observerId: store.observerId)
+                    LiveMapView(snapshot: snapshot, observerId: store.observerId, serverURL: store.serverURL)
                 } else {
                     AftermapTheme.navy
                         .overlay {
@@ -26,7 +26,7 @@ struct FieldSessionView: View {
             }
         }
         .sheet(isPresented: $showingReport) { ReportFlowView() }
-        .sheet(isPresented: $showingSettings) { SettingsView() }
+        .sheet(isPresented: $showingSettings) { LegacyDrillSettingsView() }
         .onAppear {
 #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("-aftermapReport") || ProcessInfo.processInfo.environment["AFTERMAP_REPORT"] == "1" { showingReport = true }
@@ -125,6 +125,38 @@ struct FieldSessionView: View {
         case .stale: AftermapTheme.amber
         case .failed: AftermapTheme.red
         case .idle: AftermapTheme.muted
+        }
+    }
+}
+
+private struct LegacyDrillSettingsView: View {
+    @EnvironmentObject private var store: SessionStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var serverURL = ""
+    @State private var sessionCode = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Server URL", text: $serverURL)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                TextField("Session code", text: $sessionCode)
+                    .textInputAutocapitalization(.characters)
+            }
+            .navigationTitle("Legacy Drill")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        store.updateConfiguration(serverURL: serverURL, sessionCode: sessionCode)
+                        dismiss()
+                    }
+                }
+            }
+            .onAppear {
+                serverURL = store.serverURL
+                sessionCode = store.sessionCode
+            }
         }
     }
 }

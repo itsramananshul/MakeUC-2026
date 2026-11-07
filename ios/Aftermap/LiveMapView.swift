@@ -3,11 +3,27 @@ import SwiftUI
 struct LiveMapView: View {
     let snapshot: SessionSnapshot
     let observerId: String?
+    let serverURL: String
     @State private var selectedNode: MapNode?
 
     var body: some View {
         GeometryReader { geometry in
             ZStack {
+                RadialGradient(colors: [AftermapTheme.panelRaised, AftermapTheme.navy], center: .center, startRadius: 30, endRadius: 520)
+                    .ignoresSafeArea()
+
+                let transform = MapTransform(size: geometry.size)
+                AerialImageLayer(
+                    primaryURL: snapshot.preferredMapImageryURL(against: serverURL),
+                    fallbackURL: baseImageryURL,
+                    mapRect: transform.mapRect
+                )
+
+                Rectangle()
+                    .fill(AftermapTheme.navy.opacity(0.45))
+                    .frame(width: transform.mapRect.width, height: transform.mapRect.height)
+                    .position(x: transform.mapRect.midX, y: transform.mapRect.midY)
+
                 Canvas { context, size in
                     let transform = MapTransform(size: size)
                     let byId = Dictionary(uniqueKeysWithValues: snapshot.nodes.map { ($0.id, $0) })
@@ -50,9 +66,6 @@ struct LiveMapView: View {
                         context.fill(Path(ellipseIn: CGRect(x: offset.x - 5, y: offset.y - 5, width: 10, height: 10)), with: .color(participant.id == observerId ? AftermapTheme.amber : .white))
                     }
                 }
-                .background(
-                    RadialGradient(colors: [AftermapTheme.panelRaised, AftermapTheme.navy], center: .center, startRadius: 30, endRadius: 520)
-                )
 
                 ForEach(snapshot.nodes) { node in
                     let point = MapTransform(size: geometry.size).point(node)
@@ -69,6 +82,10 @@ struct LiveMapView: View {
                             Label("LIVE FIELD MODEL", systemImage: "point.3.connected.trianglepath.dotted")
                                 .font(.caption2.weight(.black)).foregroundStyle(AftermapTheme.cyan)
                             legend
+                            Text(snapshot.mapImageryAttribution)
+                                .font(.system(size: 8, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.7))
+                                .lineLimit(1)
                         }
                         Spacer()
                     }
@@ -82,6 +99,10 @@ struct LiveMapView: View {
                 .presentationDragIndicator(.visible)
                 .presentationBackground(.ultraThinMaterial)
         }
+    }
+
+    private var baseImageryURL: URL? {
+        ImageryLayer.resolve("/mexico-beach-noaa.jpg", against: serverURL)
     }
 
     private var legend: some View {
@@ -113,13 +134,61 @@ private struct MapTransform {
     let size: CGSize
     private let inset: CGFloat = 26
 
-    func point(_ node: MapNode) -> CGPoint {
+    var mapRect: CGRect {
         let top: CGFloat = 125
         let bottom: CGFloat = 255
-        return CGPoint(
-            x: inset + CGFloat(node.x / 1000) * max(1, size.width - inset * 2),
-            y: top + CGFloat(node.y / 720) * max(120, size.height - top - bottom)
+        return CGRect(
+            x: inset,
+            y: top,
+            width: max(1, size.width - inset * 2),
+            height: max(120, size.height - top - bottom)
         )
+    }
+
+    func point(_ node: MapNode) -> CGPoint {
+        return CGPoint(
+            x: mapRect.minX + CGFloat(node.x / 1000) * mapRect.width,
+            y: mapRect.minY + CGFloat(node.y / 720) * mapRect.height
+        )
+    }
+}
+
+private struct AerialImageLayer: View {
+    let primaryURL: URL?
+    let fallbackURL: URL?
+    let mapRect: CGRect
+
+    var body: some View {
+        Group {
+            if let primaryURL {
+                AsyncImage(url: primaryURL, transaction: Transaction(animation: .easeInOut(duration: 0.25))) { phase in
+                    switch phase {
+                    case .success(let image): rendered(image)
+                    case .failure:
+                        if primaryURL != fallbackURL, let fallbackURL {
+                            AsyncImage(url: fallbackURL) { fallback in
+                                if let image = fallback.image { rendered(image) }
+                                else { placeholder }
+                            }
+                        } else { placeholder }
+                    case .empty: placeholder.overlay { ProgressView().tint(AftermapTheme.mint) }
+                    @unknown default: placeholder
+                    }
+                }
+            } else { placeholder }
+        }
+        .frame(width: mapRect.width, height: mapRect.height)
+        .clipped()
+        .position(x: mapRect.midX, y: mapRect.midY)
+        .accessibilityHidden(true)
+    }
+
+    private func rendered(_ image: Image) -> some View {
+        image.resizable().frame(width: mapRect.width, height: mapRect.height).clipped()
+    }
+
+    private var placeholder: some View {
+        LinearGradient(colors: [AftermapTheme.panelRaised, AftermapTheme.navy], startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 }
 
@@ -163,6 +232,6 @@ private struct CheckpointDetailView: View {
 }
 
 #Preview {
-    LiveMapView(snapshot: .preview, observerId: "p1")
+    LiveMapView(snapshot: .preview, observerId: "p1", serverURL: "https://example.com")
         .frame(height: 780).background(AftermapTheme.navy)
 }

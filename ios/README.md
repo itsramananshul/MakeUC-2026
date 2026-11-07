@@ -1,98 +1,81 @@
 # AFTERMAP for iPhone
 
-Native SwiftUI participant app for the controlled MakeUC field drill. It implements the complete participant loop:
+Native SwiftUI and MapLibre client for the worldwide AFTERMAP incident map. The app opens directly to an interactive world map—there is no session code or drill join step.
 
-`join → checkpoint → confirm position → capture evidence → interpret → human-confirm → shared map → candidate route`
+## Product flow
 
-The app deliberately labels every scenario as a simulated drill and every route as a candidate. It is not an emergency or life-safety system.
+- Search for a place through the shared backend and move the map to the result.
+- Use the device's current location as the route origin, or choose either endpoint directly on the map.
+- Browse active incident bounds and coordinate-aligned aerial surveys while retaining the vector basemap around them.
+- Inspect incident roads by evidence state: unknown, open, blocked, hazard, or conflict.
+- Submit confirmed, road-specific field evidence with a display name and operator-provided report key.
+- Choose start and destination points directly on the map and request an evidence-aware walking route.
+- Show `partial` and `unavailable` results explicitly. The client never substitutes an unchecked route through a known incident.
+- Continue to operate when there are zero incidents. If the server is unavailable, the app labels cached data as stale instead of presenting an unverified empty state.
+
+AFTERMAP is decision support. A complete route reflects the current shared evidence model; it is not a guarantee of real-world safety.
 
 ## Requirements
 
-- macOS with Xcode 16 or newer
-- iOS 17 or newer for physical iPhones
-- Optional: [XcodeGen](https://github.com/yonaskolb/XcodeGen) to regenerate the checked-in project
-- The [live AFTERMAP server](https://aftermap-makeuc.vercel.app), or a local server running the `/api/sessions/{code}` contract
+- macOS with Xcode 16.4 or newer
+- XcodeGen (`brew install xcodegen`)
+- iOS 17 or newer
+- Network access for the OpenFreeMap vector basemap and the configured AFTERMAP server
 
-There are no third-party runtime dependencies and no signing credentials in Git.
+MapLibre Native is pinned to `7.0.0` through Swift Package Manager. `Package.resolved` records the exact revision.
 
-## Open and run
+## Generate, build, and test
 
-1. Open `ios/Aftermap.xcodeproj` in Xcode.
-2. Select the **Aftermap** target, then **Signing & Capabilities**.
-3. Choose your Apple Development team. If Xcode reports a bundle-ID conflict, change `com.makeuc.aftermap` to a unique reverse-domain value locally. Do not commit personal team IDs or profiles.
-4. Select an iPhone simulator and press Run.
-5. Enter a display name and code `WESTHALL`. Set Server URL to `https://aftermap-makeuc.vercel.app` for the live drill or `http://localhost:3000` for a server running on the same Mac.
-6. The simulator has no usable camera. Use manual checkpoint ID entry and the photo-library/text fallback.
-
-Regenerate after editing `project.yml`:
-
-```sh
+```bash
 cd ios
 xcodegen generate
-```
-
-## Connect three physical iPhones
-
-1. Open the project in Xcode and select the development team as above.
-2. Connect each iPhone by cable. Unlock it, tap **Trust**, and enable **Developer Mode** if iOS requests it.
-3. Choose each phone in the Xcode run-destination menu and press Run. Automatic signing creates a development install for the selected team.
-4. On all three phones, set Server URL to `https://aftermap-makeuc.vercel.app`. Use code `WESTHALL` and a different display name on each phone.
-5. Open [the same Vercel site](https://aftermap-makeuc.vercel.app) on the laptop. The phones and laptop can use different networks with internet access.
-6. Accept Camera, Microphone, and Speech Recognition permissions as you use those features. Keep the app foregrounded. **LIVE** means the phone has a recent snapshot, and **STALE** means it is showing the last snapshot while reconnecting.
-
-The live site forwards reports to the shared Node server. Keep that server and its tunnel online. To run the whole rehearsal on a private Wi-Fi network instead, start the web server on the Mac, use the Mac's LAN address on the phones, and grant Local Network access.
-
-If Xcode reports **No Account for Team** or **No profiles were found**, open **Xcode → Settings → Accounts**, sign in with the Apple ID that owns the development certificate, then return to **Aftermap → Signing & Capabilities** and select that team. Let Xcode manage signing. Team IDs, provisioning profiles, certificates, and account credentials must remain local and must not be committed. If a phone runs a newer iOS version than the installed Xcode supports, update Xcode before retrying the install.
-
-QR labels may contain either a plain checkpoint ID or:
-
-```text
-aftermap:WESTHALL:<checkpointId>
-```
-
-The app validates scanned IDs against the authoritative snapshot before updating position.
-
-## Device drill checklist
-
-Use three distinct names (for example Observer A/B/C), then verify:
-
-1. Confirm all three phones and the laptop show **Mexico Beach**.
-2. Phone A scans `ATRIUM` (Coastal junction) and confirms that the passage to `CENTRAL` (Harbor junction) is **Open**.
-3. Phone B scans `EXIT` (East assembly) and confirms it as an **Assembly point**. Check that the first candidate route appears on the laptop and all phones.
-4. Phone C scans `EAST-S` (Service junction) and confirms a new **Open** passage to `EAST` (East crossing). Check that the missing link appears.
-5. Phone A reports the `ATRIUM` to `CENTRAL` passage as **Blocked**. Check that the old route becomes dashed and the new route uses the link Phone C reported. Select the closure on the laptop to see who reported it and when.
-6. During rehearsal, disconnect one phone and check for **STALE**. Reconnect it and confirm it returns to the latest map. Retry a report after a lost response to check that it appears only once.
-
-Do not fabricate timing results. Record actual observation-to-map and route-revision times during the tabletop run.
-
-## Build and tests
-
-```sh
-cd ios
-xcodegen generate
+xcodebuild -resolvePackageDependencies -project Aftermap.xcodeproj -scheme Aftermap
 xcodebuild -project Aftermap.xcodeproj -scheme Aftermap \
   -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
   CODE_SIGNING_ALLOWED=NO test
 ```
 
-For a signing-independent physical-device compile check:
+To verify the device architecture without signing:
 
-```sh
+```bash
 xcodebuild -project Aftermap.xcodeproj -scheme Aftermap \
-  -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
+  -sdk iphoneos -destination 'generic/platform=iOS' \
+  CODE_SIGNING_ALLOWED=NO build
 ```
 
-## API behavior
+## Server configuration
 
-- Session codes are uppercased client-side; the server contract remains case-insensitive.
-- The returned observer ID is persisted per device.
-- Foreground clients poll the authoritative snapshot about once per second and retain the last snapshot when stale.
-- Backend `{ "error": "..." }` messages are shown to the participant.
-- Image evidence is resized and JPEG-compressed below 1 MB before base64 encoding.
-- `/interpret` suggestions never commit automatically. `/observations` always sends `confirmed: true` after an explicit human action.
-- Each report draft receives one client-generated UUID that is reused until the submission succeeds.
-- Additional snapshot fields are ignored safely. Drone imagery is intentionally left to the command station until an aligned field-image contract is ready.
+The default server is `https://aftermap-makeuc.vercel.app`. Open **Settings** in the search bar to change it. The app expects:
 
-## Privacy and safety
+- `GET /api/incidents`
+- `GET /api/incidents/{id}`
+- `GET /api/places?q={query}`
+- `POST /api/routes`
+- `POST /api/incidents/{id}/route`
+- `POST /api/incidents/{id}/reports` with `Authorization: Bearer {report-key}`
 
-Evidence is sent only after the participant requests interpretation or confirms a report. Avoid faces, license plates, and unrelated private information in drill photos. The prototype does not perform indoor GPS localization and does not claim a route is physically safe.
+Route requests contain `origin` and `destination` latitude/longitude objects. Route responses contain `status` (`complete`, `partial`, or `unavailable`), coordinates, distance, and a human-readable reason.
+
+Incident imagery supplies a URL and geographic west/south/east/north bounds. The iOS client renders it with `MLNImageSource`, so the raster stays aligned with map coordinates at every zoom level.
+
+The report key is kept in memory only. The display name and server URL are stored in app preferences.
+
+## Physical iPhone setup
+
+1. Open `Aftermap.xcodeproj` in Xcode.
+2. Open **Xcode → Settings → Accounts** and sign in with the Apple ID that owns the development team.
+3. Select the `Aftermap` target, open **Signing & Capabilities**, enable automatic signing, and select that team.
+4. Connect and unlock the iPhone, trust the Mac, enable Developer Mode if requested, then select the phone as the run destination.
+5. Build and run. Repeat for each test device.
+
+If Xcode reports **No Account for Team** or **No profiles for `com.makeuc.aftermap`**, signing is not configured on that Mac even if a development certificate exists in Keychain. Sign in to the matching team and let Xcode create the provisioning profile.
+
+## Verification checklist
+
+1. Confirm the app opens directly to the world map and supports pan, pinch, rotate, and place search.
+2. Verify zero incidents displays as a valid live state, while an unreachable server displays a stale warning.
+3. Select an incident and confirm its aerial survey remains geographically aligned while zooming.
+4. Tap a road, submit a confirmed report, and verify the refreshed road state and report count.
+5. Choose endpoints outside an incident and request a normal route.
+6. Choose a route that intersects an incident and verify the incident-aware endpoint is used.
+7. Confirm partial and unavailable routes remain visibly labeled and are never replaced with a silent fallback.

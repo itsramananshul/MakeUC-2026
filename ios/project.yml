@@ -1,4 +1,8 @@
 name: Aftermap
+packages:
+  MapLibre:
+    url: https://github.com/maplibre/maplibre-gl-native-distribution
+    exactVersion: 7.0.0
 options:
   bundleIdPrefix: com.makeuc
   deploymentTarget:
@@ -14,6 +18,8 @@ targets:
     platform: iOS
     sources:
       - path: Aftermap
+    dependencies:
+      - package: MapLibre
     info:
       path: Aftermap/Info.plist
       properties:
@@ -24,11 +30,12 @@ targets:
           UIApplicationSupportsMultipleScenes: false
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-        NSCameraUsageDescription: "AFTERMAP scans drill checkpoint QR codes and captures evidence photos you choose to submit."
-        NSLocalNetworkUsageDescription: "AFTERMAP connects to the field-drill server running on your local network."
-        NSMicrophoneUsageDescription: "AFTERMAP records your drill report while speech transcription is active."
-        NSPhotoLibraryUsageDescription: "AFTERMAP lets you select a drill evidence photo when the camera is unavailable."
-        NSSpeechRecognitionUsageDescription: "AFTERMAP transcribes your spoken drill report into editable text."
+        NSCameraUsageDescription: "AFTERMAP captures incident evidence photos you choose to submit."
+        NSLocalNetworkUsageDescription: "AFTERMAP can connect to an incident server on your local network."
+        NSLocationWhenInUseUsageDescription: "AFTERMAP uses your location to choose route endpoints and place field evidence."
+        NSMicrophoneUsageDescription: "AFTERMAP records your incident report while speech transcription is active."
+        NSPhotoLibraryUsageDescription: "AFTERMAP lets you select an incident evidence photo when the camera is unavailable."
+        NSSpeechRecognitionUsageDescription: "AFTERMAP transcribes your spoken incident report into editable text."
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
     settings:
@@ -64,4 +71,3 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.makeuc.aftermap.uitests
         GENERATE_INFOPLIST_FILE: YES
-

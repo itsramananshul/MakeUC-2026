@@ -28,15 +28,17 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>AFTERMAP scans drill checkpoint QR codes and captures evidence photos you choose to submit.</string>
+	<string>AFTERMAP captures incident evidence photos you choose to submit.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>AFTERMAP connects to the field-drill server running on your local network.</string>
+	<string>AFTERMAP can connect to an incident server on your local network.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>AFTERMAP uses your location to choose route endpoints and place field evidence.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>AFTERMAP records your drill report while speech transcription is active.</string>
+	<string>AFTERMAP records your incident report while speech transcription is active.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>AFTERMAP lets you select a drill evidence photo when the camera is unavailable.</string>
+	<string>AFTERMAP lets you select an incident evidence photo when the camera is unavailable.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>AFTERMAP transcribes your spoken drill report into editable text.</string>
+	<string>AFTERMAP transcribes your spoken incident report into editable text.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
