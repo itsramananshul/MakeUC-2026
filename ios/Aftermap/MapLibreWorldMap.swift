@@ -24,6 +24,11 @@ struct MapLibreWorldMap: UIViewRepresentable {
     func updateUIView(_ map: MLNMapView, context: Context) {
         context.coordinator.store = store
         context.coordinator.refreshStyle()
+        if context.coordinator.lastLocationRequestRevision != store.locationRequestRevision {
+            context.coordinator.lastLocationRequestRevision = store.locationRequestRevision
+            map.showsUserLocation = true
+            map.userTrackingMode = .follow
+        }
         if let target = store.cameraTarget, context.coordinator.lastCameraRevision != target.revision {
             context.coordinator.lastCameraRevision = target.revision
             map.setCenter(target.coordinate.coordinate, zoomLevel: target.zoom, animated: true)
@@ -35,6 +40,7 @@ struct MapLibreWorldMap: UIViewRepresentable {
         var store: WorldMapStore
         weak var mapView: MLNMapView?
         var lastCameraRevision = -1
+        var lastLocationRequestRevision = 0
         private var isStyleReady = false
 
         init(store: WorldMapStore) {
@@ -44,6 +50,15 @@ struct MapLibreWorldMap: UIViewRepresentable {
         func mapView(_ mapView: MLNMapView, didFinishLoading style: MLNStyle) {
             isStyleReady = true
             refreshStyle()
+        }
+
+        func mapView(_ mapView: MLNMapView, didUpdate userLocation: MLNUserLocation?) {
+            guard let coordinate = userLocation?.location?.coordinate else { return }
+            store.acceptUserLocation(coordinate)
+        }
+
+        func mapView(_ mapView: MLNMapView, didFailToLocateUserWithError error: Error) {
+            store.locationFailed("Current location is unavailable: \(error.localizedDescription)")
         }
 
         @objc func handleTap(_ recognizer: UITapGestureRecognizer) {

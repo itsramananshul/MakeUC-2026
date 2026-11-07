@@ -23,6 +23,24 @@ struct RootView: View {
             }
             .padding(.horizontal, 12)
             .padding(.top, 4)
+
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    Button { store.requestCurrentLocationAsOrigin() } label: {
+                        Image(systemName: store.userCoordinate == nil ? "location" : "location.fill")
+                            .font(.title3.weight(.semibold))
+                            .frame(width: 48, height: 48)
+                            .background(.regularMaterial, in: Circle())
+                            .shadow(color: .black.opacity(0.22), radius: 8, y: 3)
+                    }
+                    .accessibilityLabel("Use my location as start")
+                    .accessibilityIdentifier("map.useCurrentLocation")
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 8)
         }
         .tint(AftermapTheme.mint)
         .safeAreaInset(edge: .bottom) { bottomPanel }

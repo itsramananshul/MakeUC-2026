@@ -45,9 +45,12 @@ final class WorldMapStore: ObservableObject {
     @Published var displayName: String
     @Published var reportKey = ""
     @Published var notice: String?
+    @Published private(set) var userCoordinate: IncidentCoordinate?
+    @Published private(set) var locationRequestRevision = 0
 
     private let defaults: UserDefaults
     private var cameraRevision = 0
+    private var useNextLocationAsOrigin = false
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -144,6 +147,26 @@ final class WorldMapStore: ObservableObject {
 
     func selectRoad(_ road: IncidentRoad) {
         selectedRoad = road
+    }
+
+    func requestCurrentLocationAsOrigin() {
+        useNextLocationAsOrigin = true
+        locationRequestRevision += 1
+    }
+
+    func acceptUserLocation(_ coordinate: CLLocationCoordinate2D) {
+        let value = IncidentCoordinate(coordinate)
+        userCoordinate = value
+        guard useNextLocationAsOrigin else { return }
+        useNextLocationAsOrigin = false
+        origin = value
+        routeState = .idle
+        focus(on: value, zoom: 15)
+    }
+
+    func locationFailed(_ message: String) {
+        useNextLocationAsOrigin = false
+        notice = message
     }
 
     func loadIncident(_ incident: Incident) async {

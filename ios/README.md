@@ -5,6 +5,7 @@ Native SwiftUI and MapLibre client for the worldwide AFTERMAP incident map. The 
 ## Product flow
 
 - Search for a place through the shared backend and move the map to the result.
+- Use the device's current location as the route origin, or choose either endpoint directly on the map.
 - Browse active incident bounds and coordinate-aligned aerial surveys while retaining the vector basemap around them.
 - Inspect incident roads by evidence state: unknown, open, blocked, hazard, or conflict.
 - Submit confirmed, road-specific field evidence with a display name and operator-provided report key.

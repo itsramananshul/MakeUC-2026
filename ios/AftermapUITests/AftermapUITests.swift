@@ -10,6 +10,7 @@ final class AftermapUITests: XCTestCase {
         XCTAssertTrue(app.buttons["route.origin"].exists)
         XCTAssertTrue(app.buttons["route.destination"].exists)
         XCTAssertTrue(app.buttons["route.preview"].exists)
+        XCTAssertTrue(app.buttons["map.useCurrentLocation"].exists)
         XCTAssertFalse(app.buttons["join.submit"].exists)
     }
 
