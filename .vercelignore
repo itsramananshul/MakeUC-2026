@@ -1,0 +1,4 @@
+web/.aftermap/
+web/.env.local
+web/.env.*.local
+web/.vercel/
