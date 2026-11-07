@@ -1,4 +1,2 @@
-import Aftermap from "./aftermap";
-export default function Page() {
-  return <Aftermap />;
-}
+import WorldApp from "./world-app";
+export default function Page() { return <WorldApp />; }

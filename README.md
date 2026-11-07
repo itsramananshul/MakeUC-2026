@@ -1,6 +1,9 @@
-# MakeUC 2026 — AFTERMAP
+# AFTERMAP
 
-- `ios/` — native SwiftUI participant app ([setup and three-device drill guide](ios/README.md))
-- `web/` — command station and shared HTTP API (maintained separately)
+AFTERMAP is a world map for aerial surveys, field reports, and evidence-aware walking routes. Create an incident at a real location, import its streets, and add georeferenced imagery over the surveyed footprint. Field teams report what they find, and the app updates the shared passage network.
 
-AFTERMAP is a simulated decision-support prototype. It does not certify route safety or replace emergency services.
+- [Open the web app](https://aftermap-makeuc.vercel.app)
+- [Web setup and operator guide](web/README.md)
+- [Native iPhone source](ios/)
+
+Aerial coverage shows what was photographed. A candidate route reflects the passages currently reported open. Real emergency use requires validation with response teams.

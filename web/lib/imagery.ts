@@ -8,7 +8,7 @@ const WEB_MERCATOR = "EPSG:3857";
 const MAX_SIZE = 72 * 1024 * 1024;
 export const imageryLimit = MAX_SIZE;
 type Source = {
-  width: number; height: number; data: Uint8Array;
+  width: number; height: number; data: Uint8Array; channels: number;
   fromMap: { forward(point: number[]): number[] }; origin: number[]; resolution: number[];
   bounds: Bounds; noData: number | null;
 };
@@ -55,10 +55,11 @@ async function loadSource(buffer: ArrayBuffer): Promise<Source> {
   const downsample = Math.max(1, originalWidth / 1800, originalHeight / 1800);
   const width = Math.ceil(originalWidth / downsample);
   const height = Math.ceil(originalHeight / downsample);
-  const data = await image.readRGB({ width, height, interleave: true }) as Uint8Array;
-  if (data.length !== width * height * 3) throw new RequestError("Use an RGB or grayscale GeoTIFF.");
+  const data = await image.readRGB({ width, height, interleave: true, enableAlpha: true }) as Uint8Array;
+  const channels = data.length / (width * height);
+  if (channels !== 3 && channels !== 4) throw new RequestError("Use an RGB or grayscale GeoTIFF.");
   return {
-    width, height, data, origin, bounds, fromMap: proj4(WEB_MERCATOR, crs),
+    width, height, data, channels, origin, bounds, fromMap: proj4(WEB_MERCATOR, crs),
     resolution: [resolution[0] * originalWidth / width, resolution[1] * originalHeight / height],
     noData: image.getGDALNoData(),
   };
@@ -71,14 +72,14 @@ function union(sources: Source[]): Bounds {
   ];
 }
 
-export async function mosaic(files: ArrayBuffer[]) {
+export async function mosaic(files: ArrayBuffer[], alignLegacy = true) {
   if (!files.length || files.length > 8 || files.reduce((sum, file) => sum + file.byteLength, 0) > MAX_SIZE) {
     throw new RequestError("Choose one to eight GeoTIFFs under 72 MB total.");
   }
   const sources: Source[] = [];
   for (const file of files) sources.push(await loadSource(file));
   const coverage = union(sources);
-  const aligned = coverage[0] < DRILL_BOUNDS[2] && coverage[2] > DRILL_BOUNDS[0] &&
+  const aligned = alignLegacy && coverage[0] < DRILL_BOUNDS[2] && coverage[2] > DRILL_BOUNDS[0] &&
     coverage[1] < DRILL_BOUNDS[3] && coverage[3] > DRILL_BOUNDS[1] &&
     Math.max(coverage[2] - coverage[0], coverage[3] - coverage[1]) < 15_000;
   const bounds = aligned ? DRILL_BOUNDS : coverage;
@@ -99,12 +100,14 @@ export async function mosaic(files: ArrayBuffer[]) {
         const ix = Math.floor((sx - source.origin[0]) / source.resolution[0]);
         const iy = Math.floor((sy - source.origin[1]) / source.resolution[1]);
         if (ix < 0 || ix >= source.width || iy < 0 || iy >= source.height) continue;
-        const i = (iy * source.width + ix) * 3;
+        const i = (iy * source.width + ix) * source.channels;
+        const alpha = source.channels === 4 ? source.data[i + 3] : 255;
+        if (!alpha) continue;
         if (source.noData !== null && source.data[i] === source.noData &&
             source.data[i + 1] === source.noData && source.data[i + 2] === source.noData) continue;
         const o = (y * width + x) * 4;
         pixels[o] = source.data[i]; pixels[o + 1] = source.data[i + 1];
-        pixels[o + 2] = source.data[i + 2]; pixels[o + 3] = 255;
+        pixels[o + 2] = source.data[i + 2]; pixels[o + 3] = alpha;
         painted += 1;
         break;
       }

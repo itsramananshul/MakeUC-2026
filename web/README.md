@@ -1,8 +1,17 @@
 # AFTERMAP web
 
-AFTERMAP combines reports from people in a simulated disaster zone into a shared map that changes as they learn what can be traversed. The Mexico Beach aerial base is historical NOAA imagery. All checkpoints, passage conditions, people, and routes in this drill are simulated.
+AFTERMAP opens to a worldwide, interactive map. Search a place, request walking directions, or create an incident to collect aerial surveys and field reports in that area.
 
-## Run the command view
+## Use the app
+
+1. Open [AFTERMAP](https://aftermap-makeuc.vercel.app). Search for a place or move the map to the affected area.
+2. Choose **New incident**, enter a name, and set the center and area size. The live deployment requires a workspace operator key to create incidents.
+3. Copy the incident access key and share it privately with authorized reporters. Use **Import roads** to load OpenStreetMap streets and footpaths. Imported segments start unverified.
+4. Choose **Add imagery** to upload georeferenced GeoTIFFs or a set of overlapping geotagged drone photos. Uploaded imagery is shown at its real coordinates, with transparent gaps over the underlying map. A survey that does not overlap the incident area is rejected.
+5. Select a road on the map or find it by name. Report its observed condition and optionally attach a photo. Use **Report a point** for a location observation or **Add passage** for a connection missing from the street data.
+6. Choose **Directions** and pick a start and destination on the map, or use a search result as the destination. Inside an incident, the app computes a candidate through reported open passages. It can return a partial route or no route when the evidence does not connect the endpoints.
+
+## Run locally
 
 Use Node 22.13 or later.
 
@@ -11,37 +20,33 @@ npm ci
 npm run dev
 ```
 
-Open http://localhost:3000 on the laptop. Other devices use a reachable server URL and the drill code `WESTHALL`. For a rehearsal over the internet, run `npm run build` and `npm start` on a single Node server with a persistent writable volume. The phones and browser request the same versioned snapshot about once per second. Use HTTPS for browser camera scanning.
+Open http://localhost:3000. Next.js serves the web app and the shared API. SQLite stores incidents, reports, surveys, and image evidence. Set `AFTERMAP_DB_PATH` to a writable persistent volume for deployment.
 
-Configuration goes in `.env.local`. Copy `.env.example` for the available options. SQLite defaults to `.aftermap/drill.sqlite`. Set `AFTERMAP_DB_PATH` to the file on your persistent volume. Treat the drill URL as a temporary exercise link and use nicknames and fictional reports.
+Copy `.env.example` to `.env.local` for configuration. Set `AFTERMAP_OPERATOR_KEY` to restrict creation to workspace operators. Each incident has a separate randomly generated key for reports, road imports, surveys, and evidence access. Keep the keys private. Report descriptions and names appear on the shared incident view.
 
-For Vercel, deploy the web directory and set AFTERMAP_API_ORIGIN to the HTTPS URL of the shared Node server. Vercel serves the map and forwards API requests to that server. SQLite, drone processing, and the local model stay on the Node host.
+### Imagery and providers
 
-## Run the live demo
-
-1. Project the laptop and open **Drone View** to show historical aerial imagery. To demonstrate import, choose **Import imagery**, select the two prepared overlapping Mexico Beach GeoTIFFs and wait for the aerial layer. Return to **Field Map**.
-2. Join `WESTHALL` on three iPhones or open three separate browser tabs. Open **Checkpoint codes** on the laptop to save or print QR codes. The compatible payload format is `aftermap:WESTHALL:<checkpoint ID>`.
-3. Phone A scans `ATRIUM` (Coastal junction) and reports that Harbor Road toward `CENTRAL` (Harbor junction) is **Open**. A can type or dictate “Harbor Road is open,” use **Interpret**, review the suggested target and condition, then confirm.
-4. Phone B scans `EXIT` (East assembly) and submits an **Assembly point** report at `EXIT`. The first candidate route appears.
-5. Phone C scans `EAST-S` (Service junction) and confirms a new **Open** passage to `EAST` (East crossing). The laptop adds the previously unmapped link.
-6. Phone A reports Harbor Road toward `CENTRAL` as **Blocked**. The old route becomes dashed and the route moves to the new link. Select the closure to see the reports behind it.
-
-For another rehearsal, use a fresh database or reset the current rehearsal database with `npm run drill:reset -- --confirm`. Set the same `AFTERMAP_DB_PATH` you used to start the server. This clears reports, participants, and imported imagery from the specified drill. Rejoin on the phones after a reset.
-
-## Imagery and interpretation
-
-- **GeoTIFF mosaic** imports up to eight north-up images in WGS 84, Web Mercator, or WGS 84 UTM. The server places and merges the images by coordinates. The Mexico Beach drill graph only appears over its own coverage. Imagery from another area opens separately.
-- **Drone photos** submits overlapping, geotagged JPEGs or PNGs to NodeODM. Start the worker using the example below and set `NODEODM_URL=http://127.0.0.1:3111`. The server imports the generated orthomosaic when processing finishes. Keep the import dialog open while the job runs.
-- **Interpret** uses a server-side `GEMINI_API_KEY` for photo or language suggestions. A local Ollama vision model is supported by setting `OLLAMA_URL=http://127.0.0.1:11434` and `OLLAMA_MODEL=qwen3.5:4b`. The text fallback matches a small set of explicit drill phrases when a model is unavailable. A suggestion only updates the draft. The person must confirm it to update the map.
+- **Map** uses MapLibre GL JS with OpenFreeMap vector tiles and OpenStreetMap attribution.
+- **Place search** uses Photon. Set `PHOTON_URL` to use your own server. The default public service is used for individual searches.
+- **Road import** uses Overpass and falls back to the OpenStreetMap API for bounded requests. Set `OVERPASS_URL` to configure an instance.
+- **Walking outside incidents** uses OSRM. Set `OSRM_FOOT_URL` to your walking router for sustained traffic. The public fallback is throttled to one request per second. Available routes crossing a known incident are excluded.
+- **Walking inside incidents** uses Graphology on the reported passage graph. Blocked, hazardous, disputed, and unverified passages are excluded.
+- **Aerial imagery** uses GeoTIFF.js, Proj4js, and Sharp to align georeferenced tiles and prepare map overlays. Drone photo sets are processed by NodeODM.
 
 ```sh
 docker run --rm --name aftermap-nodeodm -p 127.0.0.1:3111:3000 opendronemap/nodeodm:latest
 ```
 
-## Shared API
+Set `NODEODM_URL=http://127.0.0.1:3111`. The drone job can be reopened from **Add imagery** while it is processing. Provide overlapping images of the same area. Survey imagery does not change passage conditions by itself.
 
-All session requests use `/api/sessions/{code}`. GET returns a versioned snapshot. POST `/join` creates or resumes a participant, `/position` records a checkpoint, `/interpret` returns an unpublished suggestion, and `/observations` accepts an explicitly confirmed report. Stable observation IDs make retries idempotent. See `lib/world.ts` and `lib/validation.ts` for the exact field definitions.
+## Deployment and shared API
 
-The first candidate route uses only open links to a reported assembly point. A recent disagreement between two different observers marks a passage disputed and keeps it out of the route. The map retains the evidence and shows the last route alongside the updated one.
+Vercel serves the frontend from `web/` on GitHub `main`. Set `AFTERMAP_API_ORIGIN` to the HTTPS origin of the shared Node backend. The Node host runs SQLite and connects to the drone worker. The current Vercel site depends on that host and its tunnel remaining online.
 
-Aerial imagery from the [NOAA National Geodetic Survey Hurricane Michael dataset](https://www.fisheries.noaa.gov/inport/item/57759). It was captured on October 11, 2018.
+- `GET /api/incidents` lists incidents. `POST /api/incidents` creates an incident and returns its access key.
+- `GET /api/incidents/{id}` returns the current incident snapshot, roads, reports, and imagery.
+- `POST /api/incidents/{id}/roads` imports streets. `POST /api/incidents/{id}/reports` accepts a confirmed report.
+- `POST /api/incidents/{id}/imagery` imports GeoTIFFs. `POST /api/incidents/{id}/imagery/raw` starts a drone job.
+- `GET /api/places?q=...` searches for a place. `POST /api/routes` returns a walking route or an explanation of the evidence gap.
+
+See the route handlers under `app/api` and the shared incident types in `lib/incident-types.ts` for the request shapes.

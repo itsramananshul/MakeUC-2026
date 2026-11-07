@@ -47,8 +47,12 @@ export async function startDroneJob(code: string, files: File[]) {
   }
 }
 
-export async function droneStatus(code: string, id: string) {
-  const job = jobs.get(id);
+export async function droneStatus(code: string, id: string, publish?: (bytes: Buffer, data: Omit<Awaited<ReturnType<typeof mosaic>>, "bytes"> & { source: string; timestamp: string }) => void, restoreAt?: number) {
+  let job = jobs.get(id);
+  if (!job && restoreAt) {
+    job = { code, id, startedAt: restoreAt };
+    jobs.set(id, job);
+  }
   if (!job || job.code !== code) throw new RequestError("That processing job was not found.", 404);
   if (job.finished) return { id, status: "complete", progress: 100 };
   const response = await fetch(workerUrl(`/task/${job.id}/info`), { signal: AbortSignal.timeout(10_000) });
@@ -61,7 +65,7 @@ export async function droneStatus(code: string, id: string) {
   if (info.status.code !== 40) return { id, status: info.status.code === 10 ? "queued" : "processing", progress: info.progress ?? 0 };
 
   job.importing ??= (async () => {
-    const artifact = await fetch(workerUrl(`/task/${job.id}/download/all.zip`), { signal: AbortSignal.timeout(45_000) });
+    const artifact = await fetch(workerUrl(`/task/${id}/download/all.zip`), { signal: AbortSignal.timeout(45_000) });
     if (!artifact.ok || !artifact.headers.get("content-type")?.includes("zip") || Number(artifact.headers.get("content-length")) > imageryLimit) {
       throw new RequestError("The generated orthomosaic could not be imported. Export a GeoTIFF under 72 MB from the worker.", 502);
     }
@@ -72,12 +76,14 @@ export async function droneStatus(code: string, id: string) {
     });
     const raster = files[orthophotoPath];
     if (!raster) throw new RequestError("The drone archive did not include an importable orthomosaic.", 502);
-    const { bytes, ...geometry } = await mosaic([Uint8Array.from(raster).buffer]);
-    saveImagery(code, bytes, {
+    const { bytes, ...geometry } = await mosaic([Uint8Array.from(raster).buffer], !publish);
+    const layer = {
       ...geometry, count: info.imagesCount ?? geometry.count, label: "Drone orthomosaic",
       source: "OpenDroneMap · uploaded drone photographs", timestamp: new Date().toISOString(),
-    });
-    job.finished = true;
+    };
+    if (publish) publish(bytes, layer);
+    else saveImagery(code, bytes, layer);
+    job!.finished = true;
   })();
   try { await job.importing; }
   catch (error) { jobs.delete(id); throw error; }

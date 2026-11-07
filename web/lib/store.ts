@@ -12,7 +12,7 @@ export class RequestError extends Error {
 }
 
 let db: DatabaseSync | undefined;
-function database(): DatabaseSync {
+export function database(): DatabaseSync {
   if (db) return db;
   const path = resolve(/* turbopackIgnore: true */ process.env.AFTERMAP_DB_PATH || ".aftermap/drill.sqlite");
   mkdirSync(dirname(path), { recursive: true });
