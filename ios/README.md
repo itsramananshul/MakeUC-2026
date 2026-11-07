@@ -42,6 +42,8 @@ xcodegen generate
 7. Accept Local Network, Camera, Microphone, and Speech Recognition permissions as each feature is exercised.
 8. Keep the Mac awake and the app foregrounded during the drill. A green **LIVE • 1s SYNC** badge indicates recent snapshots; amber **STALE** means the last map is being retained while reconnecting.
 
+If Xcode reports **No Account for Team** or **No profiles were found**, open **Xcode → Settings → Accounts**, sign in with the Apple ID that owns the development certificate, then return to **Aftermap → Signing & Capabilities** and select that team. Let Xcode manage signing. Team IDs, provisioning profiles, certificates, and account credentials must remain local and must not be committed. If a phone runs a newer iOS version than the installed Xcode supports, update Xcode before retrying the install.
+
 QR labels may contain either a plain checkpoint ID or:
 
 ```text
