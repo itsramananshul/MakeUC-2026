@@ -11,7 +11,7 @@ The app deliberately labels every scenario as a simulated drill and every route 
 - macOS with Xcode 16 or newer
 - iOS 17 or newer for physical iPhones
 - Optional: [XcodeGen](https://github.com/yonaskolb/XcodeGen) to regenerate the checked-in project
-- The web server running the `/api/sessions/{code}` contract on the Mac
+- The [live AFTERMAP server](https://aftermap-makeuc.vercel.app), or a local server running the `/api/sessions/{code}` contract
 
 There are no third-party runtime dependencies and no signing credentials in Git.
 
@@ -21,7 +21,7 @@ There are no third-party runtime dependencies and no signing credentials in Git.
 2. Select the **Aftermap** target, then **Signing & Capabilities**.
 3. Choose your Apple Development team. If Xcode reports a bundle-ID conflict, change `com.makeuc.aftermap` to a unique reverse-domain value locally. Do not commit personal team IDs or profiles.
 4. Select an iPhone simulator and press Run.
-5. Enter a display name, `WESTHALL`, and `http://localhost:3000` if the web server runs on the same Mac.
+5. Enter a display name and code `WESTHALL`. Set Server URL to `https://aftermap-makeuc.vercel.app` for the live drill or `http://localhost:3000` for a server running on the same Mac.
 6. The simulator has no usable camera. Use manual checkpoint ID entry and the photo-library/text fallback.
 
 Regenerate after editing `project.yml`:
@@ -33,14 +33,14 @@ xcodegen generate
 
 ## Connect three physical iPhones
 
-1. Put the Mac and all three iPhones on the same private Wi-Fi network. Avoid guest Wi-Fi/client isolation.
-2. Make the web server listen on `0.0.0.0`, not only `localhost`, and allow the macOS firewall prompt.
-3. Find the Mac's LAN address in **System Settings → Wi-Fi → Details → TCP/IP**, for example `192.168.1.42`.
-4. Connect each iPhone to the Mac once by cable, unlock it, tap **Trust**, and enable **Developer Mode** if iOS requests it.
-5. In Xcode, choose each phone from the run-destination menu and press Run. Automatic signing creates a development install for the selected team.
-6. On every phone, enter the same URL, such as `http://192.168.1.42:3000`, and join `WESTHALL` with a different display name.
-7. Accept Local Network, Camera, Microphone, and Speech Recognition permissions as each feature is exercised.
-8. Keep the Mac awake and the app foregrounded during the drill. A green **LIVE • 1s SYNC** badge indicates recent snapshots; amber **STALE** means the last map is being retained while reconnecting.
+1. Open the project in Xcode and select the development team as above.
+2. Connect each iPhone by cable. Unlock it, tap **Trust**, and enable **Developer Mode** if iOS requests it.
+3. Choose each phone in the Xcode run-destination menu and press Run. Automatic signing creates a development install for the selected team.
+4. On all three phones, set Server URL to `https://aftermap-makeuc.vercel.app`. Use code `WESTHALL` and a different display name on each phone.
+5. Open [the same Vercel site](https://aftermap-makeuc.vercel.app) on the laptop. The phones and laptop can use different networks with internet access.
+6. Accept Camera, Microphone, and Speech Recognition permissions as you use those features. Keep the app foregrounded. **LIVE** means the phone has a recent snapshot, and **STALE** means it is showing the last snapshot while reconnecting.
+
+The live site forwards reports to the shared Node server. Keep that server and its tunnel online. To run the whole rehearsal on a private Wi-Fi network instead, start the web server on the Mac, use the Mac's LAN address on the phones, and grant Local Network access.
 
 If Xcode reports **No Account for Team** or **No profiles were found**, open **Xcode → Settings → Accounts**, sign in with the Apple ID that owns the development certificate, then return to **Aftermap → Signing & Capabilities** and select that team. Let Xcode manage signing. Team IDs, provisioning profiles, certificates, and account credentials must remain local and must not be committed. If a phone runs a newer iOS version than the installed Xcode supports, update Xcode before retrying the install.
 
@@ -56,15 +56,12 @@ The app validates scanned IDs against the authoritative snapshot before updating
 
 Use three distinct names (for example Observer A/B/C), then verify:
 
-1. All devices show the server-provided session name, node labels, and version.
-2. A scans checkpoint 1 and confirms an open passage.
-3. B scans checkpoint 2, dictates a blocked/hazard report, reviews the editable transcript and AI proposal, then explicitly confirms it.
-4. C scans an assembly/exit point and confirms it, or submits a help request.
-5. Every device shows the new edge state and candidate route within roughly one poll interval.
-6. Retry the same submission during a network interruption: the stable observation UUID lets the server deduplicate it.
-7. Disconnect one phone, verify **STALE**, reconnect it, and confirm it converges to the latest version.
-8. Submit conflicting evidence and confirm the server's `conflict` state is rendered amber.
-9. Make AI unavailable or return no suggestion; verify the app clearly falls back to a manually confirmed structured report.
+1. Confirm all three phones and the laptop show **Mexico Beach**.
+2. Phone A scans `ATRIUM` (Coastal junction) and confirms that the passage to `CENTRAL` (Harbor junction) is **Open**.
+3. Phone B scans `EXIT` (East assembly) and confirms it as an **Assembly point**. Check that the first candidate route appears on the laptop and all phones.
+4. Phone C scans `EAST-S` (Service junction) and confirms a new **Open** passage to `EAST` (East crossing). Check that the missing link appears.
+5. Phone A reports the `ATRIUM` to `CENTRAL` passage as **Blocked**. Check that the old route becomes dashed and the new route uses the link Phone C reported. Select the closure on the laptop to see who reported it and when.
+6. During rehearsal, disconnect one phone and check for **STALE**. Reconnect it and confirm it returns to the latest map. Retry a report after a lost response to check that it appears only once.
 
 Do not fabricate timing results. Record actual observation-to-map and route-revision times during the tabletop run.
 
