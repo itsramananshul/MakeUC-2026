@@ -128,7 +128,7 @@ struct SessionView: View {
                             Label("FIELD VIEW", systemImage: "map.fill").font(.caption2.weight(.bold)).foregroundStyle(AftermapTheme.cyan)
                         }
                         .padding(.horizontal, 6)
-                        LiveMapView(snapshot: snapshot, observerId: store.observerId)
+                        LiveMapView(snapshot: snapshot, observerId: store.observerId, serverURL: store.serverURL)
                             .frame(height: 360)
                             .aftermapPanel()
                         routeCard(snapshot)

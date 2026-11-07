@@ -9,7 +9,35 @@ struct SessionSnapshot: Codable, Equatable {
     var observations: [ObservationRecord]
     var route: MapRoute?
     var previousRoute: MapRoute?
+    var imagery: ImageryLayer?
     var routeChange: RouteChange?
+}
+
+struct ImageryLayer: Codable, Equatable {
+    var url: String
+    var label: String
+    var source: String
+    var timestamp: String
+    var bounds: [Double]
+    var aligned: Bool
+    var width: Int
+    var height: Int
+    var count: Int
+
+    func resolvedURL(against serverURL: String) -> URL? {
+        Self.resolve(url, against: serverURL)
+    }
+
+    static func resolve(_ value: String, against serverURL: String) -> URL? {
+        if let absolute = URL(string: value), absolute.scheme != nil { return absolute }
+        guard let base = URL(string: serverURL),
+              var origin = URLComponents(url: base, resolvingAgainstBaseURL: false) else { return nil }
+        origin.path = "/"
+        origin.query = nil
+        origin.fragment = nil
+        guard let originURL = origin.url else { return nil }
+        return URL(string: value, relativeTo: originURL)?.absoluteURL
+    }
 }
 
 struct SessionInfo: Codable, Equatable {
@@ -122,24 +150,38 @@ struct ObservationRequest: Codable {
 struct APIErrorEnvelope: Codable { var error: String }
 
 extension SessionSnapshot {
+    func preferredMapImageryURL(against serverURL: String) -> URL? {
+        let base = ImageryLayer.resolve("/mexico-beach-noaa.jpg", against: serverURL)
+        guard let imagery, imagery.aligned else { return base }
+        return imagery.resolvedURL(against: serverURL) ?? base
+    }
+
+    var mapImageryAttribution: String {
+        guard let imagery, imagery.aligned else { return "Historical aerial • NOAA / NGS • October 2018" }
+        return "\(imagery.label) • \(imagery.source)"
+    }
+
     static let preview = SessionSnapshot(
-        session: .init(code: "WESTHALL", name: "West Hall Drill", mode: "drill"),
+        session: .init(code: "WESTHALL", name: "Mexico Beach", mode: "drill"),
         version: 7,
         nodes: [
-            .init(id: "A", label: "Lobby", x: 120, y: 360, kind: .entrance),
-            .init(id: "B", label: "West Hall", x: 390, y: 360, kind: .checkpoint),
-            .init(id: "C", label: "Atrium", x: 650, y: 220, kind: .checkpoint),
-            .init(id: "D", label: "South Exit", x: 850, y: 520, kind: .exit)
+            .init(id: "SOUTH", label: "Staging point", x: 325, y: 500, kind: .entrance),
+            .init(id: "ATRIUM", label: "Coastal junction", x: 391, y: 408, kind: .checkpoint),
+            .init(id: "CENTRAL", label: "Harbor junction", x: 483, y: 279, kind: .checkpoint),
+            .init(id: "EAST", label: "East crossing", x: 568, y: 166, kind: .checkpoint),
+            .init(id: "EXIT", label: "East assembly", x: 650, y: 60, kind: .exit)
         ],
         edges: [
-            .init(id: "AB", from: "A", to: "B", label: "Lobby passage", distance: 12, state: .open, discovered: true, lastObservationAt: nil, observationIds: []),
-            .init(id: "BC", from: "B", to: "C", label: "West corridor", distance: 18, state: .blocked, discovered: true, lastObservationAt: nil, observationIds: []),
-            .init(id: "CD", from: "C", to: "D", label: "Exit corridor", distance: 20, state: .unknown, discovered: false, lastObservationAt: nil, observationIds: [])
+            .init(id: "ATRIUM:SOUTH", from: "SOUTH", to: "ATRIUM", label: "South approach", distance: 113, state: .open, discovered: true, lastObservationAt: nil, observationIds: []),
+            .init(id: "ATRIUM:CENTRAL", from: "ATRIUM", to: "CENTRAL", label: "Harbor Road", distance: 158, state: .open, discovered: true, lastObservationAt: nil, observationIds: []),
+            .init(id: "CENTRAL:EAST", from: "CENTRAL", to: "EAST", label: "North approach", distance: 141, state: .open, discovered: true, lastObservationAt: nil, observationIds: []),
+            .init(id: "EAST:EXIT", from: "EAST", to: "EXIT", label: "Assembly approach", distance: 134, state: .open, discovered: true, lastObservationAt: nil, observationIds: [])
         ],
-        participants: [.init(id: "p1", displayName: "Raman", checkpointId: "B", lastSeenAt: nil)],
+        participants: [.init(id: "p1", displayName: "Test Observer", checkpointId: "ATRIUM", lastSeenAt: nil)],
         observations: [],
-        route: .init(nodeIds: ["A", "B"], edgeIds: ["AB"], distance: 12),
+        route: .init(nodeIds: ["SOUTH", "ATRIUM", "CENTRAL", "EAST", "EXIT"], edgeIds: ["ATRIUM:SOUTH", "ATRIUM:CENTRAL", "CENTRAL:EAST", "EAST:EXIT"], distance: 546),
         previousRoute: nil,
+        imagery: nil,
         routeChange: nil
     )
 }

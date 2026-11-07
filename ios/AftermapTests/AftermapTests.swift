@@ -24,6 +24,39 @@ final class AftermapTests: XCTestCase {
         XCTAssertEqual(snapshot.session.name, "Outdoor Drill")
         XCTAssertEqual(snapshot.nodes.first?.label, "Staging Point")
         XCTAssertEqual(snapshot.version, 2)
+        XCTAssertNil(snapshot.imagery)
+    }
+
+    func testDecodesAlignedImageryAndResolvesRelativeURL() throws {
+        let json = #"""
+        {"session":{"code":"WESTHALL","name":"Mexico Beach","mode":"drill"},"version":3,
+        "nodes":[],"edges":[],"participants":[],"observations":[],"route":null,"previousRoute":null,
+        "imagery":{"url":"/api/imagery/frame-1","label":"Drone mosaic","source":"Test flight","timestamp":"2026-11-07T22:00:00Z","bounds":[-10,20,-9,21],"aligned":true,"width":1000,"height":720,"count":12},
+        "routeChange":null}
+        """#.data(using: .utf8)!
+        let snapshot = try JSONDecoder().decode(SessionSnapshot.self, from: json)
+        let imagery = try XCTUnwrap(snapshot.imagery)
+        XCTAssertTrue(imagery.aligned)
+        XCTAssertEqual(imagery.bounds, [-10, 20, -9, 21])
+        XCTAssertEqual(imagery.resolvedURL(against: "https://example.test:8443/base")?.absoluteString, "https://example.test:8443/api/imagery/frame-1")
+    }
+
+    func testAbsoluteImageryURLIsPreserved() {
+        let url = ImageryLayer.resolve("https://cdn.example.test/aerial.jpg", against: "https://example.test")
+        XCTAssertEqual(url?.absoluteString, "https://cdn.example.test/aerial.jpg")
+    }
+
+    func testUnalignedImageryKeepsMexicoBeachBaseAerial() {
+        var snapshot = SessionSnapshot.preview
+        snapshot.imagery = ImageryLayer(
+            url: "/api/imagery/unaligned", label: "Unaligned upload", source: "Test", timestamp: "2026-11-07T22:00:00Z",
+            bounds: [0, 0, 1, 1], aligned: false, width: 800, height: 600, count: 4
+        )
+        XCTAssertEqual(
+            snapshot.preferredMapImageryURL(against: "https://example.test")?.absoluteString,
+            "https://example.test/mexico-beach-noaa.jpg"
+        )
+        XCTAssertTrue(snapshot.mapImageryAttribution.contains("NOAA"))
     }
 
     func testObservationRequestKeepsStableIdAndConfirmation() throws {

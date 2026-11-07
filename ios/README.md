@@ -91,7 +91,7 @@ xcodebuild -project Aftermap.xcodeproj -scheme Aftermap \
 - Image evidence is resized and JPEG-compressed below 1 MB before base64 encoding.
 - `/interpret` suggestions never commit automatically. `/observations` always sends `confirmed: true` after an explicit human action.
 - Each report draft receives one client-generated UUID that is reused until the submission succeeds.
-- Additional snapshot fields are ignored safely. Drone imagery is intentionally left to the command station until an aligned field-image contract is ready.
+- Optional snapshot imagery URLs may be absolute or relative to the configured server. An aligned image is drawn beneath the graph in the shared 1000×720 frame; absent, unreachable, or unaligned imagery falls back to the historical Mexico Beach aerial without hiding the graph.
 
 ## Privacy and safety
 

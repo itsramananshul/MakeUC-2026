@@ -9,7 +9,7 @@ struct FieldSessionView: View {
         ZStack(alignment: .bottom) {
             Group {
                 if let snapshot = store.snapshot {
-                    LiveMapView(snapshot: snapshot, observerId: store.observerId)
+                    LiveMapView(snapshot: snapshot, observerId: store.observerId, serverURL: store.serverURL)
                 } else {
                     AftermapTheme.navy
                         .overlay {
