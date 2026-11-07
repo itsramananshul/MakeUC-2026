@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import Aftermap
 
 final class AftermapTests: XCTestCase {
@@ -156,10 +157,44 @@ final class AftermapTests: XCTestCase {
         }
         let request = IncidentReportRequest(
             id: "report-1", displayName: "Alex", edgeId: "road-7", condition: .blocked,
-            note: "Downed tree", evidenceType: "manual", confirmed: true
+            note: "Downed tree", evidenceType: "manual", location: nil, photoBase64: nil, confirmed: true
         )
         try await IncidentAPIClient(baseURL: "https://aftermap.example", urlSession: session)
             .submitReport(incidentId: "storm-1", key: "shared-secret", request: request)
+    }
+
+    func testPointPhotoReportOmitsRoadFieldsAndIncludesMappedLocation() throws {
+        let request = IncidentReportRequest(
+            id: "point-report-1",
+            displayName: "Alex",
+            edgeId: nil,
+            condition: nil,
+            note: "Water across the entrance",
+            evidenceType: "image",
+            location: IncidentCoordinate(latitude: 39.1013, longitude: -84.5127),
+            photoBase64: "/9j/2Q==",
+            confirmed: true
+        )
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any])
+        XCTAssertNil(object["edgeId"])
+        XCTAssertNil(object["condition"])
+        XCTAssertEqual(object["photoBase64"] as? String, "/9j/2Q==")
+        let location = try XCTUnwrap(object["location"] as? [String: Any])
+        XCTAssertEqual(location["latitude"] as? Double, 39.1013)
+        XCTAssertEqual(location["longitude"] as? Double, -84.5127)
+    }
+
+    func testEvidencePhotoIsConvertedToBoundedJPEG() throws {
+        let size = CGSize(width: 2_400, height: 1_800)
+        let image = UIGraphicsImageRenderer(size: size).image { context in
+            UIColor.systemBlue.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+        }
+        let data = try XCTUnwrap(IncidentPhotoProcessor.jpegData(from: image))
+        XCTAssertLessThanOrEqual(data.count, IncidentPhotoProcessor.maximumJPEGBytes)
+        XCTAssertEqual(Array(data.prefix(3)), [0xff, 0xd8, 0xff])
+        let prepared = try XCTUnwrap(UIImage(data: data))
+        XCTAssertLessThanOrEqual(max(prepared.size.width, prepared.size.height), 1_600)
     }
 
     func testPlaceSearchEncodesQueryAndDecodesResult() async throws {

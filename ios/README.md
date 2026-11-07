@@ -8,7 +8,7 @@ Native SwiftUI and MapLibre client for Gaslight Maps. The app opens directly to 
 - Use the device's current location as the route origin, or choose either endpoint directly on the map.
 - Browse active incident bounds and coordinate-aligned aerial surveys while retaining the vector basemap around them.
 - Inspect incident roads by evidence state: unknown, open, blocked, hazard, or conflict.
-- Submit confirmed, road-specific field evidence with a display name and operator-provided report key.
+- Submit confirmed evidence for a selected road, a point tapped inside an incident, or the device's current location. Reports can include an optional camera or Photo Library JPEG preview and use an operator-provided report key.
 - Choose start and destination points directly on the map and request an evidence-aware walking route.
 - Show `partial` and `unavailable` results explicitly. The client never substitutes an unchecked route through a known incident.
 - Continue to operate when there are zero incidents. If the server is unavailable, the app labels cached data as stale instead of presenting an unverified empty state.
@@ -75,7 +75,7 @@ If Xcode reports **No Account for Team** or **No profiles for `com.makeuc.afterm
 1. Confirm the app opens directly to the world map and supports pan, pinch, rotate, and place search.
 2. Verify zero incidents displays as a valid live state, while an unreachable server displays a stale warning.
 3. Select an incident and confirm its aerial survey remains geographically aligned while zooming.
-4. Tap a road, submit a confirmed report, and verify the refreshed road state and report count.
+4. Tap a road and submit a confirmed condition report, then add a point-based field report without typing coordinates. Attach a photo and verify its preview before submission.
 5. Choose endpoints outside an incident and request a normal route.
 6. Choose a route that intersects an incident and verify the incident-aware endpoint is used.
 7. Confirm partial and unavailable routes remain visibly labeled and are never replaced with a silent fallback.

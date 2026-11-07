@@ -25,6 +25,7 @@
 		D76022B64A2C507BE0063C62 /* FieldSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDCB0D5B415863ECEA04F01F /* FieldSessionView.swift */; };
 		E1570A48EDA658ACFBC97FD0 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170F548426782565848D574D /* RootView.swift */; };
 		F4230040388D4CCBDE2F676D /* WorldMapStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1D7399953B5A2CA3698307 /* WorldMapStore.swift */; };
+		FC7FAC0AC7D970CBCA035EC2 /* IncidentPhotoPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D97E8B02452983F55841F551 /* IncidentPhotoPicker.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -65,6 +66,7 @@
 		B85F4C6DD1F0CCB9D6BB057B /* IncidentModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IncidentModels.swift; sourceTree = "<group>"; };
 		CA1D7399953B5A2CA3698307 /* WorldMapStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorldMapStore.swift; sourceTree = "<group>"; };
 		CDCB0D5B415863ECEA04F01F /* FieldSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldSessionView.swift; sourceTree = "<group>"; };
+		D97E8B02452983F55841F551 /* IncidentPhotoPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IncidentPhotoPicker.swift; sourceTree = "<group>"; };
 		FC2AC0227BBAC95F68231A82 /* AftermapUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = AftermapUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -90,6 +92,7 @@
 				CDCB0D5B415863ECEA04F01F /* FieldSessionView.swift */,
 				3DE998EC3BAD92FABAC158CF /* IncidentAPIClient.swift */,
 				B85F4C6DD1F0CCB9D6BB057B /* IncidentModels.swift */,
+				D97E8B02452983F55841F551 /* IncidentPhotoPicker.swift */,
 				4BFF76E9F6EBCAC6473B79C6 /* Info.plist */,
 				91CC18DE95F66286F4CD570F /* LiveMapView.swift */,
 				26270C47314D796E97481573 /* MapLibreWorldMap.swift */,
@@ -266,6 +269,7 @@
 				D76022B64A2C507BE0063C62 /* FieldSessionView.swift in Sources */,
 				CE3BD211BC4AAB78A2B9C788 /* IncidentAPIClient.swift in Sources */,
 				68F92B391E9A829B1DA56060 /* IncidentModels.swift in Sources */,
+				FC7FAC0AC7D970CBCA035EC2 /* IncidentPhotoPicker.swift in Sources */,
 				CEDF8DA6D6D363442462546B /* LiveMapView.swift in Sources */,
 				B47A4A8F7FFEC79004EE30C2 /* MapLibreWorldMap.swift in Sources */,
 				A72D64C817A4AB41C7A9B756 /* Models.swift in Sources */,

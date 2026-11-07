@@ -12,11 +12,13 @@ final class WorldMapStore: ObservableObject {
     enum SelectionMode: Equatable {
         case origin
         case destination
+        case reportLocation
 
         var instruction: String {
             switch self {
             case .origin: "Tap the map to choose your starting point"
             case .destination: "Tap the map to choose your destination"
+            case .reportLocation: "Tap inside the incident to place your field report"
             }
         }
     }
@@ -47,10 +49,14 @@ final class WorldMapStore: ObservableObject {
     @Published var notice: String?
     @Published private(set) var userCoordinate: IncidentCoordinate?
     @Published private(set) var locationRequestRevision = 0
+    @Published var reportLocation: IncidentCoordinate?
+    @Published private(set) var reportLocationRevision = 0
 
     private let defaults: UserDefaults
     private var cameraRevision = 0
-    private var useNextLocationAsOrigin = false
+    private enum PendingLocationUse { case origin, report }
+    private var pendingLocationUse: PendingLocationUse?
+    private var isIncidentPreviewMode = false
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -61,11 +67,52 @@ final class WorldMapStore: ObservableObject {
             serverURL = "https://yourmapisgaslightingyou.us"
         }
         displayName = defaults.string(forKey: "aftermap.displayName") ?? ""
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-aftermapIncidentPreview") ||
+            ProcessInfo.processInfo.environment["AFTERMAP_INCIDENT_PREVIEW"] == "1" {
+            let bounds = IncidentBounds(west: -84.520, south: 39.094, east: -84.504, north: 39.108)
+            let road = IncidentRoad(
+                id: "preview-road",
+                from: IncidentCoordinate(latitude: 39.099, longitude: -84.516),
+                to: IncidentCoordinate(latitude: 39.104, longitude: -84.508),
+                state: .unknown,
+                label: "Preview Avenue"
+            )
+            let incident = Incident(
+                id: "preview-incident",
+                name: "Preview Incident",
+                kind: .incident,
+                bounds: bounds,
+                imagery: nil,
+                version: 1,
+                roadCount: 1
+            )
+            incidents = [incident]
+            selectedIncident = incident
+            incidentDetail = IncidentDetail(
+                id: incident.id,
+                name: incident.name,
+                kind: incident.kind,
+                bounds: bounds,
+                imagery: nil,
+                version: 1,
+                roadCount: 1,
+                roads: [road],
+                reports: []
+            )
+            displayName = "Preview Reporter"
+            reportKey = "preview-key"
+            connection = .live
+            isIncidentPreviewMode = true
+            focus(on: IncidentCoordinate(bounds.center), zoom: 15)
+        }
+#endif
     }
 
     var client: IncidentAPIClient { IncidentAPIClient(baseURL: serverURL) }
 
     func run() async {
+        if isIncidentPreviewMode { return }
         await refreshIncidents()
         while !Task.isCancelled {
             do { try await Task.sleep(for: .seconds(15)) }
@@ -137,6 +184,15 @@ final class WorldMapStore: ObservableObject {
         switch selectionMode {
         case .origin: origin = value
         case .destination: destination = value
+        case .reportLocation:
+            guard let incident = selectedIncident, incident.bounds.contains(coordinate) else {
+                notice = "Choose a point inside the selected incident."
+                return
+            }
+            selectedRoad = nil
+            reportLocation = value
+            reportLocationRevision += 1
+            focus(on: value, zoom: 16)
         case nil:
             if let incident = incidents.first(where: { $0.bounds.contains(coordinate) }) {
                 Task { await loadIncident(incident) }
@@ -152,31 +208,61 @@ final class WorldMapStore: ObservableObject {
 
     func selectRoad(_ road: IncidentRoad) {
         selectedRoad = road
+        reportLocation = nil
     }
 
     func requestCurrentLocationAsOrigin() {
-        useNextLocationAsOrigin = true
+        pendingLocationUse = .origin
         locationRequestRevision += 1
+    }
+
+    func beginReportLocationSelection() {
+        selectedRoad = nil
+        selectionMode = .reportLocation
+    }
+
+    func requestCurrentLocationForReport() {
+        pendingLocationUse = .report
+        locationRequestRevision += 1
+    }
+
+    func clearReportLocation() {
+        reportLocation = nil
     }
 
     func acceptUserLocation(_ coordinate: CLLocationCoordinate2D) {
         let value = IncidentCoordinate(coordinate)
         userCoordinate = value
-        guard useNextLocationAsOrigin else { return }
-        useNextLocationAsOrigin = false
-        origin = value
-        routeState = .idle
-        focus(on: value, zoom: 15)
+        switch pendingLocationUse {
+        case .origin:
+            origin = value
+            routeState = .idle
+            focus(on: value, zoom: 15)
+        case .report:
+            guard let incident = selectedIncident, incident.bounds.contains(coordinate) else {
+                pendingLocationUse = nil
+                notice = "Your current location is outside the selected incident. Choose a point on the map instead."
+                return
+            }
+            selectedRoad = nil
+            reportLocation = value
+            reportLocationRevision += 1
+            focus(on: value, zoom: 16)
+        case nil:
+            return
+        }
+        pendingLocationUse = nil
     }
 
     func locationFailed(_ message: String) {
-        useNextLocationAsOrigin = false
+        pendingLocationUse = nil
         notice = message
     }
 
     func loadIncident(_ incident: Incident) async {
         selectedIncident = incident
         selectedRoad = nil
+        reportLocation = nil
         focus(on: IncidentCoordinate(incident.bounds.center), zoom: 13)
         do {
             incidentDetail = try await client.incident(id: incident.id)
@@ -190,6 +276,7 @@ final class WorldMapStore: ObservableObject {
         selectedIncident = nil
         incidentDetail = nil
         selectedRoad = nil
+        reportLocation = nil
     }
 
     func previewRoute() async {
@@ -227,9 +314,19 @@ final class WorldMapStore: ObservableObject {
         }
     }
 
-    func submitReport(condition: IncidentRoad.State, note: String, evidenceType: String) async -> Bool {
-        guard let incident = selectedIncident, let road = selectedRoad else {
-            notice = "Select an incident road before submitting evidence."
+    func submitReport(condition: IncidentRoad.State?, note: String, photoJPEG: Data?) async -> Bool {
+        guard let incident = selectedIncident else {
+            notice = "Select an incident before submitting evidence."
+            return false
+        }
+        let road = selectedRoad
+        let location = road == nil ? reportLocation : nil
+        guard road != nil || location != nil else {
+            notice = "Select a road, choose a point on the map, or use your current location."
+            return false
+        }
+        if road != nil, condition == nil {
+            notice = "Choose the observed road condition."
             return false
         }
         guard !reportKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -244,17 +341,20 @@ final class WorldMapStore: ObservableObject {
         let request = IncidentReportRequest(
             id: UUID().uuidString.lowercased(),
             displayName: displayName,
-            edgeId: road.id,
+            edgeId: road?.id,
             condition: condition,
             note: note.trimmingCharacters(in: .whitespacesAndNewlines),
-            evidenceType: evidenceType,
+            evidenceType: photoJPEG == nil ? (note.isEmpty ? "manual" : "text") : "image",
+            location: location,
+            photoBase64: photoJPEG?.base64EncodedString(),
             confirmed: true
         )
         do {
             try await client.submitReport(incidentId: incident.id, key: reportKey, request: request)
             incidentDetail = try await client.incident(id: incident.id)
-            selectedRoad = incidentDetail?.roads.first(where: { $0.id == road.id })
-            notice = "Evidence added to (road.label)."
+            if let road { selectedRoad = incidentDetail?.roads.first(where: { $0.id == road.id }) }
+            reportLocation = nil
+            notice = road.map { "Evidence added to \($0.label)." } ?? "Field report added to \(incident.name)."
             await refreshIncidents()
             return true
         } catch {

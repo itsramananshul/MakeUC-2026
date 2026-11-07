@@ -108,6 +108,7 @@ struct MapLibreWorldMap: UIViewRepresentable {
             addRoads(to: style)
             addRoute(to: style)
             addEndpoints(to: style)
+            addReportLocation(to: style)
         }
 
         private var styleSignature: String {
@@ -116,6 +117,7 @@ struct MapLibreWorldMap: UIViewRepresentable {
             let selectedRoad = store.selectedRoad?.id ?? "-"
             let origin = store.origin.map { "\($0.latitude),\($0.longitude)" } ?? "-"
             let destination = store.destination.map { "\($0.latitude),\($0.longitude)" } ?? "-"
+            let reportLocation = store.reportLocation.map { "\($0.latitude),\($0.longitude)" } ?? "-"
             let route: String
             switch store.routeState {
             case .idle: route = "idle"
@@ -124,7 +126,7 @@ struct MapLibreWorldMap: UIViewRepresentable {
             case let .route(response, affected):
                 route = "\(response.status.rawValue):\(response.coordinates.count):\(response.distanceMeters):\(affected ?? "-")"
             }
-            return [incidentVersions, detail, selectedRoad, origin, destination, route].joined(separator: "#")
+            return [incidentVersions, detail, selectedRoad, origin, destination, reportLocation, route].joined(separator: "#")
         }
 
         private func removeAftermapContent(from style: MLNStyle) {
@@ -269,6 +271,27 @@ struct MapLibreWorldMap: UIViewRepresentable {
             circle.circleStrokeColor = NSExpression(forConstantValue: UIColor.systemBlue)
             circle.circleStrokeWidth = NSExpression(forConstantValue: 4)
             circle.circleRadius = NSExpression(forConstantValue: 7)
+            style.addLayer(circle)
+        }
+
+        private func addReportLocation(to style: MLNStyle) {
+            guard let location = store.reportLocation else { return }
+            let feature = MLNPointFeature()
+            feature.coordinate = location.coordinate
+            let source = MLNShapeSource(identifier: "aftermap-report-location-source", shape: feature, options: nil)
+            style.addSource(source)
+
+            let halo = MLNCircleStyleLayer(identifier: "aftermap-report-location-halo", source: source)
+            halo.circleColor = NSExpression(forConstantValue: UIColor.white)
+            halo.circleRadius = NSExpression(forConstantValue: 12)
+            halo.circleOpacity = NSExpression(forConstantValue: 0.9)
+            style.addLayer(halo)
+
+            let circle = MLNCircleStyleLayer(identifier: "aftermap-report-location-circle", source: source)
+            circle.circleColor = NSExpression(forConstantValue: UIColor.systemOrange)
+            circle.circleRadius = NSExpression(forConstantValue: 8)
+            circle.circleStrokeColor = NSExpression(forConstantValue: UIColor.white)
+            circle.circleStrokeWidth = NSExpression(forConstantValue: 2)
             style.addLayer(circle)
         }
     }

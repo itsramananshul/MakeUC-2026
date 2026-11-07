@@ -105,6 +105,7 @@ struct IncidentReport: Codable, Identifiable, Equatable {
     var at: String
     var evidenceType: String
     var location: IncidentCoordinate?
+    var evidenceUrl: String?
 }
 
 struct IncidentDetail: Codable, Identifiable, Equatable {
@@ -130,14 +131,33 @@ struct PlaceResult: Codable, Identifiable, Equatable {
 
 struct PlaceListResponse: Codable { var places: [PlaceResult] }
 
-struct IncidentReportRequest: Codable {
+struct IncidentReportRequest: Encodable {
     var id: String
     var displayName: String
-    var edgeId: String
-    var condition: IncidentRoad.State
+    var edgeId: String?
+    var condition: IncidentRoad.State?
     var note: String
     var evidenceType: String
+    var location: IncidentCoordinate?
+    var photoBase64: String?
     var confirmed: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case id, displayName, edgeId, condition, note, evidenceType, location, photoBase64, confirmed
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(displayName, forKey: .displayName)
+        try container.encodeIfPresent(edgeId, forKey: .edgeId)
+        try container.encodeIfPresent(condition, forKey: .condition)
+        try container.encode(note, forKey: .note)
+        try container.encode(evidenceType, forKey: .evidenceType)
+        try container.encodeIfPresent(location, forKey: .location)
+        try container.encodeIfPresent(photoBase64, forKey: .photoBase64)
+        try container.encode(confirmed, forKey: .confirmed)
+    }
 }
 
 enum RoutePreviewState: Equatable {
