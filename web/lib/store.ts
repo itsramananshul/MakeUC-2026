@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { BASE_IMAGERY } from "./imagery-frame";
 import {
   DEMO_CODE, edgeKey, findRoute, initialWorld, type Edge, type Observation, type Report, type Snapshot,
 } from "./world";
@@ -30,7 +31,9 @@ function database(): DatabaseSync {
 export function getWorld(code: string): Snapshot {
   const row = database().prepare("SELECT data FROM worlds WHERE code = ?").get(code.toUpperCase());
   if (!row) throw new RequestError("That drill code was not found.", 404);
-  return JSON.parse(row.data as string) as Snapshot;
+  const world = JSON.parse(row.data as string) as Snapshot;
+  world.imagery ??= BASE_IMAGERY;
+  return world;
 }
 
 function updateWorld<T>(code: string, update: (world: Snapshot) => { result: T; changed: boolean }): T {

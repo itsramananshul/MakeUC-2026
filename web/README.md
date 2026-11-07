@@ -30,7 +30,7 @@ For another rehearsal, use a fresh database or reset the current rehearsal datab
 
 - **GeoTIFF mosaic** imports up to eight north-up images in WGS 84, Web Mercator, or WGS 84 UTM. The server places and merges the images by coordinates. The Mexico Beach drill graph only appears over its own coverage. Imagery from another area opens separately.
 - **Drone photos** submits overlapping, geotagged JPEGs or PNGs to NodeODM. Start the worker using the example below and set `NODEODM_URL=http://127.0.0.1:3111`. The server imports the generated orthomosaic when processing finishes. Keep the import dialog open while the job runs.
-- **Interpret** uses a server-side `GEMINI_API_KEY` for photo or language suggestions. The text fallback matches a small set of explicit drill phrases when Gemini is unavailable. A suggestion only updates the draft. The person must confirm it to update the map.
+- **Interpret** uses a server-side `GEMINI_API_KEY` for photo or language suggestions. A local Ollama vision model is supported by setting `OLLAMA_URL=http://127.0.0.1:11434` and `OLLAMA_MODEL=qwen3.5:4b`. The text fallback matches a small set of explicit drill phrases when a model is unavailable. A suggestion only updates the draft. The person must confirm it to update the map.
 
 ```sh
 docker run --rm --name aftermap-nodeodm -p 127.0.0.1:3111:3000 opendronemap/nodeodm:latest

@@ -1,4 +1,4 @@
-import type { ImageryLayer } from "./imagery-frame";
+import { BASE_IMAGERY, type ImageryLayer } from "./imagery-frame.ts";
 
 export type Checkpoint = {
   id: string; label: string; x: number; y: number;
@@ -87,7 +87,7 @@ export function initialWorld(): Snapshot {
       initialEdge("EAST-S", "LAB", "Debris site approach"),
       initialEdge("EAST-S", "STORE", "Supply site approach"),
     ],
-    participants: [], observations: [], route: null, previousRoute: null, routeChange: null,
+    participants: [], observations: [], route: null, previousRoute: null, routeChange: null, imagery: BASE_IMAGERY,
   };
 }
 
