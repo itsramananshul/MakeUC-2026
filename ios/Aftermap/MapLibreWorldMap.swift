@@ -42,6 +42,7 @@ struct MapLibreWorldMap: UIViewRepresentable {
         var lastCameraRevision = -1
         var lastLocationRequestRevision = 0
         private var isStyleReady = false
+        private var renderedSignature = ""
 
         init(store: WorldMapStore) {
             self.store = store
@@ -49,6 +50,7 @@ struct MapLibreWorldMap: UIViewRepresentable {
 
         func mapView(_ mapView: MLNMapView, didFinishLoading style: MLNStyle) {
             isStyleReady = true
+            renderedSignature = ""
             refreshStyle()
         }
 
@@ -97,12 +99,32 @@ struct MapLibreWorldMap: UIViewRepresentable {
 
         func refreshStyle() {
             guard isStyleReady, let style = mapView?.style else { return }
+            let signature = styleSignature
+            guard signature != renderedSignature else { return }
+            renderedSignature = signature
             removeAftermapContent(from: style)
             addImagery(to: style)
             addIncidents(to: style)
             addRoads(to: style)
             addRoute(to: style)
             addEndpoints(to: style)
+        }
+
+        private var styleSignature: String {
+            let incidentVersions = store.incidents.map { "\($0.id):\($0.version):\($0.imagery?.url ?? "-")" }.joined(separator: "|")
+            let detail = store.incidentDetail.map { "\($0.id):\($0.version):\($0.roads.count)" } ?? "-"
+            let selectedRoad = store.selectedRoad?.id ?? "-"
+            let origin = store.origin.map { "\($0.latitude),\($0.longitude)" } ?? "-"
+            let destination = store.destination.map { "\($0.latitude),\($0.longitude)" } ?? "-"
+            let route: String
+            switch store.routeState {
+            case .idle: route = "idle"
+            case .calculating: route = "calculating"
+            case let .unavailable(reason): route = "unavailable:\(reason)"
+            case let .route(response, affected):
+                route = "\(response.status.rawValue):\(response.coordinates.count):\(response.distanceMeters):\(affected ?? "-")"
+            }
+            return [incidentVersions, detail, selectedRoad, origin, destination, route].joined(separator: "#")
         }
 
         private func removeAftermapContent(from style: MLNStyle) {

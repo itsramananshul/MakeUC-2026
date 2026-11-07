@@ -194,11 +194,12 @@ final class WorldMapStore: ObservableObject {
         }
 
         routeState = .calculating
-        let direct = [origin, destination]
-        let intersecting = incidents.first(where: { $0.bounds.intersects(direct) })
+        let endpointIncident = incidents.first(where: {
+            $0.bounds.contains(origin.coordinate) || $0.bounds.contains(destination.coordinate)
+        })
 
         do {
-            if let incident = intersecting {
+            if let incident = endpointIncident {
                 let response = try await client.route(incidentId: incident.id, origin: origin, destination: destination)
                 routeState = response.status == .unavailable
                     ? .unavailable(response.reason)
@@ -208,10 +209,9 @@ final class WorldMapStore: ObservableObject {
 
             let ordinary = try await client.ordinaryRoute(origin: origin, destination: destination)
             if let affected = incidents.first(where: { $0.bounds.intersects(ordinary.coordinates) }) {
-                let checked = try await client.route(incidentId: affected.id, origin: origin, destination: destination)
-                routeState = checked.status == .unavailable
-                    ? .unavailable(checked.reason)
-                    : .route(checked, affectedIncidentName: affected.name)
+                routeState = .unavailable(
+                    "The proposed route enters \(affected.name), so AFTERMAP refused to display it without incident-road verification."
+                )
             } else {
                 routeState = ordinary.status == .unavailable
                     ? .unavailable(ordinary.reason)

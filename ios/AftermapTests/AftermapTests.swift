@@ -175,6 +175,26 @@ final class AftermapTests: XCTestCase {
         let places = try await IncidentAPIClient(baseURL: "https://aftermap.example", urlSession: session).places(query: "New York")
         XCTAssertEqual(places.first?.id, "nyc")
     }
+
+    func testLiveWorldContract() async throws {
+        guard let serverURL = ProcessInfo.processInfo.environment["AFTERMAP_LIVE_WORLD_URL"], !serverURL.isEmpty else {
+            throw XCTSkip("Set AFTERMAP_LIVE_WORLD_URL to opt into the read-only production contract check.")
+        }
+        let client = IncidentAPIClient(baseURL: serverURL)
+        _ = try await client.incidents()
+
+        let places = try await client.places(query: "Cincinnati")
+        XCTAssertFalse(places.isEmpty)
+
+        let route = try await client.ordinaryRoute(
+            origin: IncidentCoordinate(latitude: 39.1329, longitude: -84.5150),
+            destination: IncidentCoordinate(latitude: 39.1031, longitude: -84.5120)
+        )
+        XCTAssertEqual(route.status, .complete)
+        XCTAssertGreaterThan(route.coordinates.count, 2)
+        XCTAssertGreaterThan(route.distanceMeters, 0)
+        XCTAssertFalse(route.reason.isEmpty)
+    }
 }
 
 private func requestBody(_ request: URLRequest) throws -> Data {
