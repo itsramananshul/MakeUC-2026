@@ -2,18 +2,14 @@ import SwiftUI
 
 @main
 struct AftermapApp: App {
-    @StateObject private var store = SessionStore()
-    @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var store = WorldMapStore()
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(store)
                 .preferredColorScheme(.dark)
-                .task { await store.start() }
-                .onChange(of: scenePhase) { _, phase in
-                    store.setForegrounded(phase == .active)
-                }
+                .task { await store.run() }
         }
     }
 }

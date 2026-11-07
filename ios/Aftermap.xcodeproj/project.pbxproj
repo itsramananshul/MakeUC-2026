@@ -14,11 +14,16 @@
 		2D55E8BB271F496EA152E866 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CD38EEAC0208C87EF1A2F08 /* APIClient.swift */; };
 		6182C8E172BE473910B7346F /* AftermapApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D95E8ED582545650F1404C /* AftermapApp.swift */; };
 		67FC45C83F9754B39A485FC6 /* AftermapUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 407D65CF2E730461A33716D0 /* AftermapUITests.swift */; };
+		68F92B391E9A829B1DA56060 /* IncidentModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B85F4C6DD1F0CCB9D6BB057B /* IncidentModels.swift */; };
+		726C6EBAF103954923576259 /* MapLibre in Frameworks */ = {isa = PBXBuildFile; productRef = 57377AA2910B127B81CDB4A9 /* MapLibre */; };
 		88566C4D95C0739D638CAB17 /* CaptureTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20F68C6900E0126A99E7379 /* CaptureTools.swift */; };
 		A72D64C817A4AB41C7A9B756 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 771EC1A60DC46BBEEB88503B /* Models.swift */; };
+		B47A4A8F7FFEC79004EE30C2 /* MapLibreWorldMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26270C47314D796E97481573 /* MapLibreWorldMap.swift */; };
+		CE3BD211BC4AAB78A2B9C788 /* IncidentAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DE998EC3BAD92FABAC158CF /* IncidentAPIClient.swift */; };
 		CEDF8DA6D6D363442462546B /* LiveMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91CC18DE95F66286F4CD570F /* LiveMapView.swift */; };
 		D76022B64A2C507BE0063C62 /* FieldSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDCB0D5B415863ECEA04F01F /* FieldSessionView.swift */; };
 		E1570A48EDA658ACFBC97FD0 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170F548426782565848D574D /* RootView.swift */; };
+		F4230040388D4CCBDE2F676D /* WorldMapStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1D7399953B5A2CA3698307 /* WorldMapStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -43,8 +48,10 @@
 		170F548426782565848D574D /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		1A71374C609DD9217768334B /* AftermapTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = AftermapTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1CD38EEAC0208C87EF1A2F08 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		26270C47314D796E97481573 /* MapLibreWorldMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapLibreWorldMap.swift; sourceTree = "<group>"; };
 		30D7E4794B29B1A12370B995 /* Aftermap.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Aftermap.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3711A09D0E7D4B10AA387BC4 /* ReportFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportFlowView.swift; sourceTree = "<group>"; };
+		3DE998EC3BAD92FABAC158CF /* IncidentAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IncidentAPIClient.swift; sourceTree = "<group>"; };
 		407D65CF2E730461A33716D0 /* AftermapUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AftermapUITests.swift; sourceTree = "<group>"; };
 		4BFF76E9F6EBCAC6473B79C6 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		54D95E8ED582545650F1404C /* AftermapApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AftermapApp.swift; sourceTree = "<group>"; };
@@ -53,9 +60,22 @@
 		827A0FBB0E2BB06965F38CC3 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		91CC18DE95F66286F4CD570F /* LiveMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveMapView.swift; sourceTree = "<group>"; };
 		B20F68C6900E0126A99E7379 /* CaptureTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureTools.swift; sourceTree = "<group>"; };
+		B85F4C6DD1F0CCB9D6BB057B /* IncidentModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IncidentModels.swift; sourceTree = "<group>"; };
+		CA1D7399953B5A2CA3698307 /* WorldMapStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorldMapStore.swift; sourceTree = "<group>"; };
 		CDCB0D5B415863ECEA04F01F /* FieldSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldSessionView.swift; sourceTree = "<group>"; };
 		FC2AC0227BBAC95F68231A82 /* AftermapUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = AftermapUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		4DEC58F9C1687B31504D35C7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				726C6EBAF103954923576259 /* MapLibre in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		10AAAACFA051F0012021CB34 /* Aftermap */ = {
@@ -65,13 +85,17 @@
 				1CD38EEAC0208C87EF1A2F08 /* APIClient.swift */,
 				B20F68C6900E0126A99E7379 /* CaptureTools.swift */,
 				CDCB0D5B415863ECEA04F01F /* FieldSessionView.swift */,
+				3DE998EC3BAD92FABAC158CF /* IncidentAPIClient.swift */,
+				B85F4C6DD1F0CCB9D6BB057B /* IncidentModels.swift */,
 				4BFF76E9F6EBCAC6473B79C6 /* Info.plist */,
 				91CC18DE95F66286F4CD570F /* LiveMapView.swift */,
+				26270C47314D796E97481573 /* MapLibreWorldMap.swift */,
 				771EC1A60DC46BBEEB88503B /* Models.swift */,
 				3711A09D0E7D4B10AA387BC4 /* ReportFlowView.swift */,
 				170F548426782565848D574D /* RootView.swift */,
 				7BC429A58DFB7EBA608E549F /* SessionStore.swift */,
 				827A0FBB0E2BB06965F38CC3 /* Theme.swift */,
+				CA1D7399953B5A2CA3698307 /* WorldMapStore.swift */,
 			);
 			path = Aftermap;
 			sourceTree = "<group>";
@@ -120,6 +144,7 @@
 			buildConfigurationList = B6958AA7AF76FF43C60AF18D /* Build configuration list for PBXNativeTarget "Aftermap" */;
 			buildPhases = (
 				94F7AE88834C1A9657C16BC2 /* Sources */,
+				4DEC58F9C1687B31504D35C7 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -127,6 +152,7 @@
 			);
 			name = Aftermap;
 			packageProductDependencies = (
+				57377AA2910B127B81CDB4A9 /* MapLibre */,
 			);
 			productName = Aftermap;
 			productReference = 30D7E4794B29B1A12370B995 /* Aftermap.app */;
@@ -199,6 +225,9 @@
 			);
 			mainGroup = 48B0EBDAB60AEADF48B73F66;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				EB4A39946D2048B15D955657 /* XCRemoteSwiftPackageReference "maplibre-gl-native-distribution" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1FF0145EB84FBB79F513F11C /* Products */;
 			projectDirPath = "";
@@ -220,12 +249,16 @@
 				6182C8E172BE473910B7346F /* AftermapApp.swift in Sources */,
 				88566C4D95C0739D638CAB17 /* CaptureTools.swift in Sources */,
 				D76022B64A2C507BE0063C62 /* FieldSessionView.swift in Sources */,
+				CE3BD211BC4AAB78A2B9C788 /* IncidentAPIClient.swift in Sources */,
+				68F92B391E9A829B1DA56060 /* IncidentModels.swift in Sources */,
 				CEDF8DA6D6D363442462546B /* LiveMapView.swift in Sources */,
+				B47A4A8F7FFEC79004EE30C2 /* MapLibreWorldMap.swift in Sources */,
 				A72D64C817A4AB41C7A9B756 /* Models.swift in Sources */,
 				26576F94855EDE3ECF416D5B /* ReportFlowView.swift in Sources */,
 				E1570A48EDA658ACFBC97FD0 /* RootView.swift in Sources */,
 				2C811786AD23E3B64AFA012A /* SessionStore.swift in Sources */,
 				2D41E22B7A1F6388FFFF14B0 /* Theme.swift in Sources */,
+				F4230040388D4CCBDE2F676D /* WorldMapStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -528,6 +561,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		EB4A39946D2048B15D955657 /* XCRemoteSwiftPackageReference "maplibre-gl-native-distribution" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/maplibre/maplibre-gl-native-distribution";
+			requirement = {
+				kind = exactVersion;
+				version = 7.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		57377AA2910B127B81CDB4A9 /* MapLibre */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = EB4A39946D2048B15D955657 /* XCRemoteSwiftPackageReference "maplibre-gl-native-distribution" */;
+			productName = MapLibre;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = ADD8409D26056525464C8A43 /* Project object */;
 }

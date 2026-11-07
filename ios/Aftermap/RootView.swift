@@ -1,287 +1,412 @@
 import SwiftUI
 
 struct RootView: View {
-    @EnvironmentObject private var store: SessionStore
+    @EnvironmentObject private var store: WorldMapStore
+    @State private var showingSettings = false
+    @State private var showingIncident = false
+    @State private var showingReport = false
 
     var body: some View {
         ZStack {
-            AftermapTheme.navy.ignoresSafeArea()
-            if store.isJoined {
-                FieldSessionView()
-            } else {
-                JoinView()
+            MapLibreWorldMap(store: store)
+                .ignoresSafeArea()
+                .accessibilityIdentifier("world.map")
+
+            VStack(spacing: 10) {
+                searchPanel
+                if let mode = store.selectionMode {
+                    selectionBanner(mode)
+                } else if case let .stale(message) = store.connection {
+                    staleBanner(message)
+                }
+                Spacer()
             }
+            .padding(.horizontal, 12)
+            .padding(.top, 4)
         }
         .tint(AftermapTheme.mint)
+        .safeAreaInset(edge: .bottom) { bottomPanel }
+        .sheet(isPresented: $showingSettings) { SettingsSheet(store: store) }
+        .sheet(isPresented: $showingIncident) { IncidentSheet(store: store, showingReport: $showingReport) }
+        .sheet(isPresented: $showingReport) { ReportSheet(store: store) }
         .alert("AFTERMAP", isPresented: Binding(
-            get: { store.bannerMessage != nil },
-            set: { if !$0 { store.bannerMessage = nil } }
+            get: { store.notice != nil },
+            set: { if !$0 { store.notice = nil } }
         )) {
-            Button("OK") { store.bannerMessage = nil }
+            Button("OK") { store.notice = nil }
         } message: {
-            Text(store.bannerMessage ?? "")
+            Text(store.notice ?? "")
         }
+        .onChange(of: store.selectedIncident?.id) { _, id in
+            if id != nil { showingIncident = true }
+        }
+        .task(id: store.query) { await store.search() }
     }
-}
 
-struct JoinView: View {
-    @EnvironmentObject private var store: SessionStore
-    @State private var serverURL = ""
-    @State private var sessionCode = "WESTHALL"
-    @State private var displayName = ""
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Spacer(minLength: 34)
-                VStack(alignment: .leading, spacing: 10) {
-                    DrillBadge()
-                    Text("AFTERMAP")
-                        .font(.system(size: 43, weight: .black, design: .rounded))
-                        .foregroundStyle(.white)
-                    Text("A live, collaborative map for when the world breaks.")
-                        .font(.title3.weight(.medium))
-                        .foregroundStyle(AftermapTheme.muted)
+    private var searchPanel: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Search any place", text: $store.query)
+                    .textInputAutocapitalization(.words)
+                    .submitLabel(.search)
+                    .accessibilityIdentifier("place.search")
+                if store.isSearching {
+                    ProgressView().controlSize(.small)
+                } else if !store.query.isEmpty {
+                    Button { store.query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                        .foregroundStyle(.secondary)
                 }
-
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("JOIN FIELD SESSION")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(AftermapTheme.cyan)
-                    LabeledField(label: "Display name", icon: "person.fill", text: $displayName, capitalization: .words)
-                    LabeledField(label: "Session code", icon: "number", text: $sessionCode, capitalization: .characters)
-                    LabeledField(label: "Server URL", icon: "server.rack", text: $serverURL, capitalization: .never, keyboard: .URL)
-
-                    Button {
-                        Task { _ = await store.join(serverURL: serverURL, sessionCode: sessionCode, displayName: displayName) }
-                    } label: {
-                        HStack {
-                            if store.isBusy { ProgressView().tint(AftermapTheme.navy) }
-                            Text(store.isBusy ? "Connecting…" : "Join \(sessionCode.uppercased()) drill")
-                                .fontWeight(.bold)
-                            Spacer()
-                            Image(systemName: "arrow.right")
-                        }
-                        .padding()
-                        .foregroundStyle(AftermapTheme.navy)
-                        .background(AftermapTheme.mint, in: RoundedRectangle(cornerRadius: 14))
-                    }
-                    .accessibilityIdentifier("join.submit")
-                    .disabled(store.isBusy || displayName.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-                .aftermapPanel()
-
-                Label("Simulated field-drill prototype. It cannot certify passage safety or direct a real evacuation.", systemImage: "exclamationmark.triangle")
-                    .font(.footnote)
-                    .foregroundStyle(AftermapTheme.amber)
+                Divider().frame(height: 22)
+                Button { showingSettings = true } label: { Image(systemName: "slider.horizontal.3") }
+                    .accessibilityLabel("Settings")
             }
-            .padding(20)
-        }
-        .onAppear {
-            serverURL = store.serverURL
-            sessionCode = store.sessionCode
-            displayName = store.displayName
-        }
-    }
-}
+            .padding(.horizontal, 14)
+            .frame(height: 50)
 
-private struct LabeledField: View {
-    var label: String
-    var icon: String
-    @Binding var text: String
-    var capitalization: TextInputAutocapitalization = .sentences
-    var keyboard: UIKeyboardType = .default
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Label(label, systemImage: icon)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(AftermapTheme.muted)
-            TextField(label, text: $text)
-                .textInputAutocapitalization(capitalization)
-                .keyboardType(keyboard)
-                .autocorrectionDisabled(keyboard == .URL)
-                .padding(13)
-                .background(AftermapTheme.navy.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
-                .foregroundStyle(.white)
-        }
-    }
-}
-
-struct SessionView: View {
-    @EnvironmentObject private var store: SessionStore
-    @State private var showingReport = false
-    @State private var showingSettings = false
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 14) {
-                    statusBar
-                    if let snapshot = store.snapshot {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(snapshot.session.name).font(.headline)
-                                Text(snapshot.session.code).font(.caption.monospaced().weight(.bold)).foregroundStyle(AftermapTheme.muted)
+            if !store.places.isEmpty {
+                Divider()
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(store.places.prefix(6))) { place in
+                            Button { store.choosePlace(place) } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "mappin.circle.fill")
+                                        .font(.title3)
+                                        .foregroundStyle(AftermapTheme.cyan)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(place.name).font(.subheadline.weight(.semibold))
+                                        Text(place.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                    }
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .contentShape(Rectangle())
                             }
-                            Spacer()
-                            Label("FIELD VIEW", systemImage: "map.fill").font(.caption2.weight(.bold)).foregroundStyle(AftermapTheme.cyan)
+                            .buttonStyle(.plain)
+                            if place.id != store.places.prefix(6).last?.id { Divider().padding(.leading, 50) }
                         }
-                        .padding(.horizontal, 6)
-                        LiveMapView(snapshot: snapshot, observerId: store.observerId, serverURL: store.serverURL)
-                            .frame(height: 360)
-                            .aftermapPanel()
-                        routeCard(snapshot)
-                        participantStrip(snapshot)
-                    } else {
-                        ContentUnavailableView("Waiting for world model", systemImage: "point.3.connected.trianglepath.dotted", description: Text("Check the server URL and keep this phone on the same network."))
-                            .frame(minHeight: 360)
-                            .aftermapPanel()
                     }
-                    safetyNotice
                 }
-                .padding(14)
+                .frame(maxHeight: 290)
             }
-            .background(AftermapTheme.navy)
-            .navigationTitle("AFTERMAP")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { DrillBadge() }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showingSettings = true } label: { Image(systemName: "gearshape.fill") }
-                }
-            }
-            .safeAreaInset(edge: .bottom) {
-                Button { showingReport = true } label: {
-                    Label("Add confirmed report", systemImage: "plus.viewfinder")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 15)
-                        .foregroundStyle(AftermapTheme.navy)
-                        .background(AftermapTheme.mint, in: RoundedRectangle(cornerRadius: 16))
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .background(.ultraThinMaterial)
-                .disabled(store.snapshot == nil)
-            }
-            .sheet(isPresented: $showingReport) { ReportFlowView() }
-            .sheet(isPresented: $showingSettings) { SettingsView() }
         }
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: .black.opacity(0.2), radius: 12, y: 4)
     }
 
-    private var statusBar: some View {
-        HStack(spacing: 8) {
-            Circle().fill(connectionColor).frame(width: 8, height: 8)
-            Text(connectionLabel).font(.caption.weight(.bold))
+    private func selectionBanner(_ mode: WorldMapStore.SelectionMode) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "scope").foregroundStyle(AftermapTheme.cyan)
+            Text(mode.instruction).font(.subheadline.weight(.semibold))
             Spacer()
-            if let version = store.snapshot?.version { Text("WORLD MODEL v\(version)").font(.caption2.monospaced().weight(.bold)) }
+            Button("Cancel") { store.selectionMode = nil }.font(.caption.weight(.bold))
         }
-        .foregroundStyle(connectionColor)
-        .padding(.horizontal, 6)
+        .padding(12)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .accessibilityIdentifier("map.selectionInstruction")
     }
 
-    private var connectionLabel: String {
-        switch store.connection {
-        case .idle: "OFFLINE"
-        case .connecting: "CONNECTING"
-        case .live: "LIVE • 1s SYNC"
-        case .stale: "STALE • RETRYING"
-        case .failed: "CONNECTION ERROR"
+    private func staleBanner(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wifi.exclamationmark")
+            Text("Updates unavailable — showing the last map").font(.caption.weight(.semibold))
+            Spacer()
+            Button("Retry") { Task { await store.refreshIncidents() } }.font(.caption.weight(.bold))
         }
+        .foregroundStyle(AftermapTheme.amber)
+        .padding(11)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .accessibilityHint(message)
     }
 
-    private var connectionColor: Color {
-        switch store.connection {
-        case .live: AftermapTheme.mint
-        case .connecting: AftermapTheme.cyan
-        case .stale: AftermapTheme.amber
-        case .failed: AftermapTheme.red
-        case .idle: AftermapTheme.muted
-        }
-    }
-
-    private func routeCard(_ snapshot: SessionSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
+    private var bottomPanel: some View {
+        VStack(spacing: 10) {
             HStack {
-                Label("CANDIDATE ROUTE", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
-                    .font(.caption.weight(.bold)).foregroundStyle(AftermapTheme.mint)
-                Spacer()
-                if let distance = snapshot.route?.distance { Text("\(distance, specifier: "%.0f") units").font(.caption.monospacedDigit()) }
-            }
-            if let route = snapshot.route {
-                Text(route.nodeIds.compactMap { id in snapshot.nodes.first(where: { $0.id == id })?.label }.joined(separator: "  →  "))
-                    .font(.headline)
-                Text("Based only on the current shared drill model. Verify conditions in person.")
-                    .font(.caption).foregroundStyle(AftermapTheme.muted)
-            } else {
-                Text("No candidate route is available from confirmed map evidence.")
-                    .foregroundStyle(AftermapTheme.amber)
-            }
-            if let change = snapshot.routeChange {
-                Label(change.reason, systemImage: "arrow.triangle.2.circlepath")
-                    .font(.caption).foregroundStyle(AftermapTheme.amber)
-            }
-        }
-        .aftermapPanel()
-    }
-
-    private func participantStrip(_ snapshot: SessionSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("PARTICIPANTS • \(snapshot.participants.count)")
-                .font(.caption.weight(.bold)).foregroundStyle(AftermapTheme.cyan)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack {
-                    ForEach(snapshot.participants) { person in
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(person.displayName).font(.subheadline.weight(.semibold))
-                            Text(snapshot.nodes.first(where: { $0.id == person.checkpointId })?.label ?? "Position unknown")
-                                .font(.caption2).foregroundStyle(AftermapTheme.muted)
-                        }
-                        .padding(10).background(AftermapTheme.panelRaised, in: RoundedRectangle(cornerRadius: 12))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("AFTERMAP").font(.caption.weight(.black)).tracking(1.4)
+                    switch store.connection {
+                    case .loading:
+                        Text("Loading the world map…")
+                    case .live:
+                        Text(store.incidents.isEmpty ? "World map live • No active incidents" : "World map live • \(store.incidents.count) active incident\(store.incidents.count == 1 ? "" : "s")")
+                    case .stale:
+                        Text("Map data may be stale")
                     }
                 }
+                .font(.caption)
+                Spacer()
+                if !store.incidents.isEmpty {
+                    Menu {
+                        ForEach(store.incidents) { incident in
+                            Button(incident.name) { Task { await store.loadIncident(incident) } }
+                        }
+                    } label: {
+                        Label("Incidents", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(AftermapTheme.red)
+                    }
+                    .accessibilityIdentifier("incidents.menu")
+                }
             }
+
+            HStack(spacing: 8) {
+                endpointButton(title: "Start", coordinate: store.origin, mode: .origin, icon: "location.fill")
+                Image(systemName: "arrow.right").font(.caption).foregroundStyle(.secondary)
+                endpointButton(title: "Destination", coordinate: store.destination, mode: .destination, icon: "mappin.and.ellipse")
+            }
+
+            routeStatus
+
+            Button {
+                Task { await store.previewRoute() }
+            } label: {
+                HStack {
+                    if case .calculating = store.routeState { ProgressView().tint(.white) }
+                    Image(systemName: "figure.walk")
+                    Text(routeButtonTitle).fontWeight(.bold)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                }
+                .padding(.horizontal, 14)
+                .frame(height: 48)
+                .foregroundStyle(.white)
+                .background(Color.blue, in: RoundedRectangle(cornerRadius: 14))
+            }
+            .disabled(store.origin == nil || store.destination == nil || store.routeState == .calculating)
+            .accessibilityIdentifier("route.preview")
         }
-        .aftermapPanel()
+        .padding(14)
+        .background(.ultraThinMaterial)
     }
 
-    private var safetyNotice: some View {
-        Text("DRILL ONLY • Not a safety system, emergency service, or assurance that any route is physically safe.")
-            .font(.caption2.weight(.bold)).foregroundStyle(AftermapTheme.amber).multilineTextAlignment(.center).padding(.vertical, 10)
+    private func endpointButton(title: String, coordinate: IncidentCoordinate?, mode: WorldMapStore.SelectionMode, icon: String) -> some View {
+        Button { store.setSelectionMode(mode) } label: {
+            HStack(spacing: 7) {
+                Image(systemName: icon).foregroundStyle(coordinate == nil ? .secondary : AftermapTheme.mint)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).font(.caption2).foregroundStyle(.secondary)
+                    Text(coordinate == nil ? "Choose on map" : coordinateLabel(coordinate!))
+                        .font(.caption.weight(.semibold)).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(mode == .origin ? "route.origin" : "route.destination")
+    }
+
+    @ViewBuilder private var routeStatus: some View {
+        switch store.routeState {
+        case .idle, .calculating:
+            EmptyView()
+        case let .unavailable(reason):
+            Label(reason, systemImage: "exclamationmark.octagon.fill")
+                .font(.caption.weight(.semibold)).foregroundStyle(AftermapTheme.red)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("route.unavailable")
+        case let .route(response, affected):
+            VStack(alignment: .leading, spacing: 3) {
+                Label(routeStatusTitle(response), systemImage: response.status == .complete ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(response.status == .complete ? AftermapTheme.mint : AftermapTheme.amber)
+                if let affected { Text("Checked against \(affected)").font(.caption2).foregroundStyle(.secondary) }
+                if !response.reason.isEmpty { Text(response.reason).font(.caption2).foregroundStyle(.secondary) }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("route.status")
+        }
+    }
+
+    private var routeButtonTitle: String {
+        switch store.routeState {
+        case .calculating: "Checking evidence…"
+        default: "Preview evidence-aware route"
+        }
+    }
+
+    private func routeStatusTitle(_ response: IncidentRouteResponse) -> String {
+        let distance = Measurement(value: response.distanceMeters, unit: UnitLength.meters)
+        let formatted = distance.formatted(.measurement(width: .abbreviated, usage: .road))
+        return switch response.status {
+        case .complete: "Evidence-aware route • \(formatted)"
+        case .partial: "Partial route only • \(formatted)"
+        case .unavailable: "No verified route"
+        }
+    }
+
+    private func coordinateLabel(_ value: IncidentCoordinate) -> String {
+        String(format: "%.4f, %.4f", value.latitude, value.longitude)
     }
 }
 
-struct SettingsView: View {
-    @EnvironmentObject private var store: SessionStore
+private struct SettingsSheet: View {
+    @ObservedObject var store: WorldMapStore
     @Environment(\.dismiss) private var dismiss
-    @State private var serverURL = ""
-    @State private var sessionCode = ""
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("Connection") {
-                    TextField("Server URL", text: $serverURL).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    TextField("Session code", text: $sessionCode).textInputAutocapitalization(.characters).autocorrectionDisabled()
-                    Button("Save and reconnect") {
-                        store.updateConfiguration(serverURL: serverURL, sessionCode: sessionCode)
-                        Task { await store.refresh() }
-                        dismiss()
-                    }
+                    TextField("Server URL", text: $store.serverURL)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                 }
-                Section("Device identity") {
-                    LabeledContent("Name", value: store.displayName)
-                    LabeledContent("Observer ID", value: store.observerId ?? "None")
-                    Button("Leave session on this device", role: .destructive) { store.leaveDeviceIdentity(); dismiss() }
+                Section("Evidence identity") {
+                    TextField("Display name", text: $store.displayName)
+                    SecureField("Incident report key", text: $store.reportKey)
+                    Text("The report key stays in memory and is not saved on this device.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
-                Section { Text("Use the Mac's LAN address, not localhost, on physical iPhones. Example: http://192.168.1.42:3000") }
+                Section {
+                    Button("Refresh incident data") { Task { await store.refreshIncidents() } }
+                }
             }
-            .navigationTitle("Drill settings")
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-            .onAppear { serverURL = store.serverURL; sessionCode = store.sessionCode }
+            .navigationTitle("AFTERMAP Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { store.saveSettings(); dismiss() }
+                }
+            }
         }
     }
 }
 
-#Preview("Join") { JoinView().environmentObject(SessionStore()) }
+private struct IncidentSheet: View {
+    @ObservedObject var store: WorldMapStore
+    @Binding var showingReport: Bool
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if let detail = store.incidentDetail {
+                    List {
+                        Section {
+                            LabeledContent("Roads", value: "\(detail.roadCount)")
+                            LabeledContent("Reports", value: "\(detail.reports.count)")
+                            if let imagery = detail.imagery {
+                                LabeledContent("Aerial survey", value: imagery.source)
+                                LabeledContent("Captured", value: imagery.timestamp)
+                            } else {
+                                Label("No aerial survey published", systemImage: "photo.badge.exclamationmark")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Section("Tap a road to inspect or report") {
+                            ForEach(detail.roads) { road in
+                                Button {
+                                    store.selectRoad(road)
+                                } label: {
+                                    HStack {
+                                        Circle().fill(roadColor(road.state)).frame(width: 10, height: 10)
+                                        VStack(alignment: .leading) {
+                                            Text(road.label).foregroundStyle(.primary)
+                                            Text(road.state.rawValue.capitalized).font(.caption).foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                        if store.selectedRoad?.id == road.id { Image(systemName: "checkmark.circle.fill") }
+                                    }
+                                }
+                            }
+                        }
+                        if let road = store.selectedRoad {
+                            Section("Selected road") {
+                                Text(road.label)
+                                Button {
+                                    dismiss()
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { showingReport = true }
+                                } label: {
+                                    Label("Add confirmed evidence", systemImage: "plus.viewfinder")
+                                }
+                                .accessibilityIdentifier("incident.report")
+                            }
+                        }
+                    }
+                } else {
+                    ProgressView("Loading incident evidence…")
+                }
+            }
+            .navigationTitle(store.selectedIncident?.name ?? "Incident")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { store.clearIncidentSelection(); dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func roadColor(_ state: IncidentRoad.State) -> Color {
+        switch state {
+        case .unknown: .gray
+        case .open: .green
+        case .blocked: .red
+        case .hazard: .orange
+        case .conflict: .purple
+        }
+    }
+}
+
+private struct ReportSheet: View {
+    @ObservedObject var store: WorldMapStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var condition: IncidentRoad.State = .open
+    @State private var note = ""
+    @State private var evidenceType = "manual"
+    @State private var submitting = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Location") {
+                    LabeledContent("Incident", value: store.selectedIncident?.name ?? "Not selected")
+                    LabeledContent("Road", value: store.selectedRoad?.label ?? "Not selected")
+                }
+                Section("Observed condition") {
+                    Picker("Condition", selection: $condition) {
+                        Text("Open").tag(IncidentRoad.State.open)
+                        Text("Blocked").tag(IncidentRoad.State.blocked)
+                        Text("Hazard").tag(IncidentRoad.State.hazard)
+                    }
+                    .pickerStyle(.segmented)
+                    Picker("Evidence", selection: $evidenceType) {
+                        Text("Field check").tag("manual")
+                        Text("Written note").tag("text")
+                        Text("Voice note").tag("voice")
+                    }
+                    TextField("What did you observe?", text: $note, axis: .vertical)
+                        .lineLimit(3...7)
+                }
+                Section {
+                    Label("Submitting confirms this is a direct observation. It may change routes for everyone.", systemImage: "checkmark.shield")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Add Evidence")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(submitting ? "Submitting…" : "Submit") {
+                        submitting = true
+                        Task {
+                            if await store.submitReport(condition: condition, note: note, evidenceType: evidenceType) { dismiss() }
+                            submitting = false
+                        }
+                    }
+                    .disabled(submitting)
+                    .accessibilityIdentifier("report.submit")
+                }
+            }
+        }
+    }
+}

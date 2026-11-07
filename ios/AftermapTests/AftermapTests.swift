@@ -99,6 +99,100 @@ final class AftermapTests: XCTestCase {
             XCTAssertEqual(error.localizedDescription, "Unknown checkpoint C9")
         }
     }
+
+    func testDecodesEmptyWorldwideIncidentList() throws {
+        let data = #"{"incidents":[]}"#.data(using: .utf8)!
+        let response = try JSONDecoder().decode(IncidentListResponse.self, from: data)
+        XCTAssertTrue(response.incidents.isEmpty)
+    }
+
+    func testIncidentBoundsDetectsRouteIntersection() {
+        let bounds = IncidentBounds(west: -85.0, south: 29.0, east: -84.0, north: 30.0)
+        XCTAssertTrue(bounds.intersects([
+            IncidentCoordinate(latitude: 29.5, longitude: -85.5),
+            IncidentCoordinate(latitude: 29.5, longitude: -83.5)
+        ]))
+        XCTAssertFalse(bounds.intersects([
+            IncidentCoordinate(latitude: 35, longitude: -90),
+            IncidentCoordinate(latitude: 36, longitude: -89)
+        ]))
+    }
+
+    func testOrdinaryRouteUsesSharedContractAndPreservesUnavailableReason() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/routes")
+            XCTAssertEqual(request.httpMethod, "POST")
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: try requestBody(request)) as? [String: Any])
+            XCTAssertNotNil(object["origin"])
+            XCTAssertNotNil(object["destination"])
+            let data = #"{"status":"unavailable","coordinates":[],"distanceMeters":0,"reason":"No verified path around the affected area."}"#.data(using: .utf8)!
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
+        }
+        let client = IncidentAPIClient(baseURL: "https://aftermap.example", urlSession: session)
+        let route = try await client.ordinaryRoute(
+            origin: IncidentCoordinate(latitude: 40, longitude: -73),
+            destination: IncidentCoordinate(latitude: 40.1, longitude: -73.1)
+        )
+        XCTAssertEqual(route.status, .unavailable)
+        XCTAssertEqual(route.reason, "No verified path around the affected area.")
+    }
+
+    func testIncidentReportUsesBearerKeyAndExactRoadEvidenceContract() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/incidents/storm-1/reports")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer shared-secret")
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: try requestBody(request)) as? [String: Any])
+            XCTAssertEqual(object["edgeId"] as? String, "road-7")
+            XCTAssertEqual(object["condition"] as? String, "blocked")
+            XCTAssertEqual(object["confirmed"] as? Bool, true)
+            let data = #"{"ok":true}"#.data(using: .utf8)!
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
+        }
+        let request = IncidentReportRequest(
+            id: "report-1", displayName: "Alex", edgeId: "road-7", condition: .blocked,
+            note: "Downed tree", evidenceType: "manual", confirmed: true
+        )
+        try await IncidentAPIClient(baseURL: "https://aftermap.example", urlSession: session)
+            .submitReport(incidentId: "storm-1", key: "shared-secret", request: request)
+    }
+
+    func testPlaceSearchEncodesQueryAndDecodesResult() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/places")
+            XCTAssertEqual(URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first?.value, "New York")
+            let data = #"{"places":[{"id":"nyc","name":"New York","detail":"New York, USA","latitude":40.7128,"longitude":-74.006}]}"#.data(using: .utf8)!
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
+        }
+        let places = try await IncidentAPIClient(baseURL: "https://aftermap.example", urlSession: session).places(query: "New York")
+        XCTAssertEqual(places.first?.id, "nyc")
+    }
+}
+
+private func requestBody(_ request: URLRequest) throws -> Data {
+    if let body = request.httpBody { return body }
+    guard let stream = request.httpBodyStream else {
+        throw NSError(domain: "AftermapTests", code: 1, userInfo: [NSLocalizedDescriptionKey: "Request has no body"])
+    }
+    stream.open()
+    defer { stream.close() }
+    var result = Data()
+    var buffer = [UInt8](repeating: 0, count: 1024)
+    while stream.hasBytesAvailable {
+        let count = stream.read(&buffer, maxLength: buffer.count)
+        if count < 0 { throw stream.streamError ?? NSError(domain: "AftermapTests", code: 2) }
+        if count == 0 { break }
+        result.append(buffer, count: count)
+    }
+    return result
 }
 
 private final class MockURLProtocol: URLProtocol {
