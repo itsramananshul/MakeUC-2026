@@ -101,7 +101,7 @@ struct ReportFlowView: View {
             DrillBadge()
             Text("Anchor this report to a known field checkpoint.")
                 .font(.title2.bold())
-            Text("Scan its AFTERMAP QR label, or select the ID manually on the simulator or if the camera is unavailable.")
+            Text("Scan its Gaslight Maps QR label, or select the ID manually on the simulator or if the camera is unavailable.")
                 .foregroundStyle(AftermapTheme.muted)
 
             Button { showingScanner = true } label: {

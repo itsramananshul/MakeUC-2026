@@ -1,7 +1,7 @@
 import { booleanIntersects } from "@turf/boolean-intersects";
 import { polygon, lineString } from "@turf/helpers";
 import { boundsTuple, distanceMeters, lngLat, within, type Coordinate, type GeographicBounds,
-  type IncidentRoute, type IncidentSummary, type Place, type Road } from "./incident-types";
+  type IncidentRoute, type IncidentSummary, type Place, type Road, type RouteTravelMode } from "./incident-types";
 import { RequestError } from "./store";
 
 const userAgent = "AFTERMAP/1.0 (+https://aftermap-makeuc.vercel.app)";
@@ -108,14 +108,46 @@ function incidentPolygon(bounds: GeographicBounds) {
 }
 
 let lastRoute = 0;
-export async function standardRoute(origin: Coordinate, destination: Coordinate, incidents: IncidentSummary[]): Promise<IncidentRoute> {
-  const unset: IncidentRoute = { status: "unavailable", coordinates: [], distanceMeters: 0, reason: "No walking route was found." };
-  if (!process.env.OSRM_FOOT_URL && Date.now() - lastRoute < 1000) {
-    throw new RequestError("Wait briefly before requesting another route.", 429);
-  }
-  lastRoute = Date.now();
+let routeQueue: Promise<void> = Promise.resolve();
+
+async function waitForPublicRouter() {
+  const turn = routeQueue.then(async () => {
+    const delay = Math.max(0, 1000 - (Date.now() - lastRoute));
+    if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+    lastRoute = Date.now();
+  });
+  routeQueue = turn.catch(() => undefined);
+  await turn;
+}
+
+function router(mode: Exclude<RouteTravelMode, "transit">) {
+  if (mode === "driving") return {
+    base: process.env.OSRM_CAR_URL || "https://router.project-osrm.org",
+    configured: !!process.env.OSRM_CAR_URL,
+  };
+  if (mode === "cycling") return {
+    base: process.env.OSRM_BIKE_URL || "https://routing.openstreetmap.de/routed-bike",
+    configured: !!process.env.OSRM_BIKE_URL,
+  };
+  return {
+    base: process.env.OSRM_FOOT_URL || "https://routing.openstreetmap.de/routed-foot",
+    configured: !!process.env.OSRM_FOOT_URL,
+  };
+}
+
+export async function standardRoute(
+  origin: Coordinate,
+  destination: Coordinate,
+  incidents: IncidentSummary[],
+  mode: RouteTravelMode = "walking",
+): Promise<IncidentRoute> {
+  const label = mode === "driving" ? "driving" : mode === "cycling" ? "cycling" : mode;
+  const unset: IncidentRoute = { status: "unavailable", coordinates: [], distanceMeters: 0, reason: `No ${label} route was found.` };
+  if (mode === "transit") return { ...unset, reason: "Transit routing is not available from the configured routing service." };
+  const selectedRouter = router(mode);
+  if (!selectedRouter.configured) await waitForPublicRouter();
   const pair = `${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}`;
-  const base = (process.env.OSRM_FOOT_URL || "https://routing.openstreetmap.de/routed-foot").replace(/\/$/, "");
+  const base = selectedRouter.base.replace(/\/$/, "");
   const url = `${base}/route/v1/driving/${pair}?overview=full&geometries=geojson&alternatives=true`;
   try {
     const response = await fetch(url, {
@@ -129,6 +161,6 @@ export async function standardRoute(origin: Coordinate, destination: Coordinate,
       !incidents.some(incident => booleanIntersects(lineString(route.geometry.coordinates), incidentPolygon(incident.bounds))));
     if (!safe) return { ...unset, reason: "Available routes pass through an incident. Choose points on its reported passage network." };
     return { status: "complete", coordinates: safe.geometry.coordinates.map(([longitude, latitude]) => ({ latitude, longitude })),
-      distanceMeters: Math.round(safe.distance), reason: "Standard walking route outside mapped incidents." };
-  } catch { throw new RequestError("The walking route service is temporarily unavailable.", 503); }
+      distanceMeters: Math.round(safe.distance), reason: `Standard ${label} route outside mapped incidents.` };
+  } catch { throw new RequestError(`The ${label} route service is temporarily unavailable.`, 503); }
 }

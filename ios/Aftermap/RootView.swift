@@ -2,14 +2,29 @@ import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 
+private enum RouteEndpointEditor: String, Identifiable {
+    case origin
+    case destination
+
+    var id: String { rawValue }
+    var title: String { self == .origin ? "Change Start" : "Change Destination" }
+    var placeholder: String { self == .origin ? "Search for a starting place" : "Search for a destination" }
+}
+
 struct RootView: View {
     @EnvironmentObject private var store: WorldMapStore
     @State private var showingSettings = false
     @State private var showingIncident = false
     @State private var showingReport = false
     @State private var showingDisasterHub = false
+    @State private var showingDashboard = true
+    @State private var showingDirections = false
+    @State private var endpointEditor: RouteEndpointEditor?
     @State private var requestedInitialLocation = false
-    @State private var dashboardExpanded = true
+    @State private var dashboardDetent: PresentationDetent = .medium
+    @FocusState private var searchFocused: Bool
+
+    private static let compactDashboardDetent = PresentationDetent.height(118)
 
     var body: some View {
         ZStack {
@@ -77,24 +92,7 @@ struct RootView: View {
             .padding(.bottom, 8)
         }
         .tint(.blue)
-        .safeAreaInset(edge: .bottom, spacing: 0) { dashboardPanel }
-        .sheet(isPresented: $showingSettings) { SettingsSheet(store: store) }
-        .sheet(isPresented: $showingDisasterHub) { DisasterHubSheet(store: store) }
-        .sheet(isPresented: $showingIncident) { IncidentSheet(store: store, showingReport: $showingReport) }
-        .sheet(isPresented: $showingReport) {
-            ReportSheet(store: store) {
-                showingReport = false
-                store.beginReportLocationSelection()
-            }
-        }
-        .alert("AFTERMAP", isPresented: Binding(
-            get: { store.notice != nil },
-            set: { if !$0 { store.notice = nil } }
-        )) {
-            Button("OK") { store.notice = nil }
-        } message: {
-            Text(store.notice ?? "")
-        }
+        .sheet(isPresented: $showingDashboard) { dashboardSheet }
         .onChange(of: store.selectedIncident?.id) { _, id in
             if id != nil { showingIncident = true }
         }
@@ -107,6 +105,7 @@ struct RootView: View {
                 showingReport = true
             }
         }
+        .onChange(of: store.query) { _, _ in store.queryDidChange() }
         .task(id: store.query) { await store.search() }
         .task {
             guard !requestedInitialLocation else { return }
@@ -124,11 +123,26 @@ struct RootView: View {
                 TextField("Search Maps", text: $store.query)
                     .textInputAutocapitalization(.words)
                     .submitLabel(.search)
+                    .focused($searchFocused)
+                    .onSubmit {
+                        Task {
+                            if await store.submitSearch() {
+                                searchFocused = false
+                                withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                                    dashboardDetent = .medium
+                                }
+                            }
+                        }
+                    }
                     .accessibilityIdentifier("place.search")
                 if store.isSearching {
                     ProgressView().controlSize(.small)
                 } else if !store.query.isEmpty {
-                    Button { store.query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                    Button {
+                        store.clearSearch()
+                        searchFocused = true
+                        dashboardDetent = .large
+                    } label: { Image(systemName: "xmark.circle.fill") }
                         .foregroundStyle(.secondary)
                 }
                 Divider().frame(height: 22)
@@ -153,7 +167,11 @@ struct RootView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(store.places.prefix(6))) { place in
-                            Button { store.choosePlace(place) } label: {
+                            Button {
+                                store.choosePlace(place)
+                                searchFocused = false
+                                dashboardDetent = .medium
+                            } label: {
                                 HStack(spacing: 12) {
                                     Image(systemName: "mappin.circle.fill")
                                         .font(.title3)
@@ -169,11 +187,12 @@ struct RootView: View {
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            .accessibilityIdentifier("place.result.\(place.id)")
                             if place.id != store.places.prefix(6).last?.id { Divider().padding(.leading, 50) }
                         }
                     }
                 }
-                .frame(maxHeight: 220)
+                .frame(maxHeight: dashboardDetent == .large ? 520 : 220)
                 .padding(.top, 8)
             }
         }
@@ -204,102 +223,312 @@ struct RootView: View {
         .accessibilityHint(message)
     }
 
+    private var dashboardSheet: some View {
+        dashboardPanel
+            .presentationDetents([Self.compactDashboardDetent, .medium, .large], selection: $dashboardDetent)
+            .presentationDragIndicator(.hidden)
+            .presentationBackground(.regularMaterial)
+            .presentationCornerRadius(28)
+            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+            .presentationContentInteraction(.resizes)
+            .interactiveDismissDisabled()
+            .sheet(isPresented: $showingSettings) { SettingsSheet(store: store) }
+            .sheet(isPresented: $showingDisasterHub) { DisasterHubSheet(store: store) }
+            .sheet(isPresented: $showingIncident) { IncidentSheet(store: store, showingReport: $showingReport) }
+            .sheet(isPresented: $showingReport) {
+                ReportSheet(store: store) {
+                    showingReport = false
+                    store.beginReportLocationSelection()
+                    dashboardDetent = Self.compactDashboardDetent
+                }
+            }
+            .sheet(item: $endpointEditor) { endpoint in
+                RouteEndpointSearchSheet(store: store, endpoint: endpoint)
+            }
+            .alert("Gaslight Maps", isPresented: Binding(
+                get: { store.notice != nil },
+                set: { if !$0 { store.notice = nil } }
+            )) {
+                Button("OK") { store.notice = nil }
+            } message: {
+                Text(store.notice ?? "")
+            }
+    }
+
     private var dashboardPanel: some View {
         VStack(spacing: 12) {
             Capsule()
-                .fill(Color.secondary.opacity(0.35))
-                .frame(width: 38, height: 5)
+                .fill(Color.secondary.opacity(0.42))
+                .frame(width: 42, height: 5)
                 .frame(maxWidth: .infinity, minHeight: 20)
                 .contentShape(Rectangle())
-                .onTapGesture { setDashboardExpanded(!dashboardExpanded) }
-                .accessibilityLabel(dashboardExpanded ? "Collapse map dashboard" : "Expand map dashboard")
+                .accessibilityLabel("Resize map dashboard")
                 .accessibilityAddTraits(.isButton)
                 .accessibilityIdentifier("dashboard.handle")
 
             searchPanel
 
-            if dashboardExpanded && store.places.isEmpty {
-                HStack {
-                    Text("Report & Navigate")
-                        .font(.title3.weight(.bold))
-                    Spacer()
-                    Label(connectionLabel, systemImage: connectionIcon)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(connectionColor)
+            if dashboardDetent != Self.compactDashboardDetent {
+                if showingDirections {
+                    routePlanner
+                } else if let place = store.selectedPlace, !searchFocused {
+                    selectedPlaceCard(place)
+                } else if store.places.isEmpty && !searchFocused {
+                    dashboardActions
                 }
-
-                HStack(alignment: .top, spacing: 4) {
-                    quickAction(
-                        title: "Report",
-                        subtitle: "Disaster",
-                        icon: "exclamationmark.triangle.fill",
-                        tint: .red,
-                        accessibilityID: "disaster.report"
-                    ) { showingDisasterHub = true }
-
-                    quickAction(
-                        title: "Start",
-                        subtitle: store.origin.map(coordinateLabel) ?? "Choose",
-                        icon: "location.fill",
-                        tint: .blue,
-                        accessibilityID: "route.origin"
-                    ) { store.setSelectionMode(.origin) }
-
-                    quickAction(
-                        title: "Destination",
-                        subtitle: store.destination.map(coordinateLabel) ?? "Choose",
-                        icon: "mappin.and.ellipse",
-                        tint: .blue,
-                        accessibilityID: "route.destination"
-                    ) { store.setSelectionMode(.destination) }
-
-                    quickAction(
-                        title: "Route",
-                        subtitle: routeActionSubtitle,
-                        icon: "figure.walk",
-                        tint: .green,
-                        accessibilityID: "route.preview",
-                        disabled: store.origin == nil || store.destination == nil || store.routeState == .calculating
-                    ) { Task { await store.previewRoute() } }
-                }
-
-                routeStatus
             }
         }
         .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 14)
-        .background {
-            UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28)
-                .fill(.regularMaterial)
-                .ignoresSafeArea(edges: .bottom)
-        }
-        .overlay {
-            UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28)
-                .stroke(Color.primary.opacity(0.08))
-        }
-        .shadow(color: .black.opacity(0.18), radius: 18, y: -3)
-        .contentShape(Rectangle())
-        .simultaneousGesture(dashboardDragGesture)
-        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: dashboardExpanded)
-    }
-
-    private var dashboardDragGesture: some Gesture {
-        DragGesture(minimumDistance: 12)
-            .onEnded { value in
-                guard abs(value.translation.height) > abs(value.translation.width) else { return }
-                if value.translation.height > 28 {
-                    setDashboardExpanded(false)
-                } else if value.translation.height < -28 {
-                    setDashboardExpanded(true)
+        .padding(.top, 18)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onChange(of: searchFocused) { _, focused in
+            if focused {
+                showingDirections = false
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                    dashboardDetent = .large
                 }
             }
+        }
     }
 
-    private func setDashboardExpanded(_ expanded: Bool) {
-        withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
-            dashboardExpanded = expanded
+    private var dashboardActions: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Text("Report & Navigate")
+                    .font(.title3.weight(.bold))
+                Spacer()
+                Label(connectionLabel, systemImage: connectionIcon)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(connectionColor)
+            }
+
+            HStack(alignment: .top, spacing: 4) {
+                quickAction(
+                    title: "Report",
+                    subtitle: "Disaster",
+                    icon: "exclamationmark.triangle.fill",
+                    tint: .red,
+                    accessibilityID: "disaster.report"
+                ) { showingDisasterHub = true }
+
+                quickAction(
+                    title: "Start",
+                    subtitle: originLabel,
+                    icon: "location.fill",
+                    tint: .blue,
+                    accessibilityID: "route.origin"
+                ) {
+                    endpointEditor = .origin
+                }
+
+                quickAction(
+                    title: "Destination",
+                    subtitle: destinationLabel,
+                    icon: "mappin.and.ellipse",
+                    tint: .blue,
+                    accessibilityID: "route.destination"
+                ) {
+                    endpointEditor = .destination
+                }
+
+                quickAction(
+                    title: "Directions",
+                    subtitle: routeActionSubtitle,
+                    icon: "arrow.triangle.turn.up.right.diamond.fill",
+                    tint: .green,
+                    accessibilityID: "route.preview",
+                    disabled: store.destination == nil
+                ) {
+                    showingDirections = true
+                    dashboardDetent = .medium
+                    if store.origin == nil { store.requestCurrentLocationAsOrigin() }
+                }
+            }
+
+            routeStatus
         }
+    }
+
+    private func selectedPlaceCard(_ place: PlaceResult) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "mappin.circle.fill")
+                    .font(.largeTitle)
+                    .foregroundStyle(.red)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(place.name)
+                        .font(.title2.weight(.bold))
+                    if !place.detail.isEmpty {
+                        Text(place.detail)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                Button {
+                    store.clearSearch()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityLabel("Close place details")
+            }
+
+            Button {
+                store.useSelectedPlaceAsDestination()
+                showingDirections = true
+                dashboardDetent = .medium
+            } label: {
+                Label("Directions", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .accessibilityIdentifier("place.directions")
+
+            HStack(spacing: 18) {
+                Label(String(format: "%.4f", place.latitude), systemImage: "location.north.line")
+                Label(String(format: "%.4f", place.longitude), systemImage: "location.east.line")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var routePlanner: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Button {
+                    showingDirections = false
+                } label: {
+                    Image(systemName: "chevron.left")
+                }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.circle)
+                Text("Directions")
+                    .font(.title2.weight(.bold))
+                Spacer()
+            }
+
+            VStack(spacing: 8) {
+                routeEndpointRow(
+                    icon: "location.fill",
+                    title: "Start",
+                    subtitle: originLabel
+                ) {
+                    endpointEditor = .origin
+                }
+                routeEndpointRow(
+                    icon: "mappin.and.ellipse",
+                    title: "Destination",
+                    subtitle: destinationLabel
+                ) {
+                    endpointEditor = .destination
+                }
+            }
+
+            HStack(spacing: 8) {
+                ForEach(RouteTravelMode.allCases, id: \.self) { mode in
+                    Button {
+                        store.travelMode = mode
+                        if store.origin != nil, store.destination != nil {
+                            Task { await store.previewRoute() }
+                        }
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: mode.icon)
+                            Text(mode.shortLabel).font(.caption2.weight(.semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(store.travelMode == mode ? .blue : .secondary)
+                    .accessibilityIdentifier("route.mode.\(mode.rawValue)")
+                }
+            }
+
+            Button {
+                if store.origin == nil {
+                    store.requestCurrentLocationAsOrigin()
+                } else {
+                    Task { await store.previewRoute() }
+                }
+            } label: {
+                if store.routeState == .calculating {
+                    ProgressView().frame(maxWidth: .infinity)
+                } else {
+                    Label(store.origin == nil ? "Use My Location" : "Show Safe Route", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(store.destination == nil || store.routeState == .calculating)
+            .accessibilityIdentifier("route.calculate")
+
+            if store.routeAlternatives.count > 1 {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Available safe routes")
+                        .font(.subheadline.weight(.semibold))
+                    ForEach(Array(store.routeAlternatives.enumerated()), id: \.offset) { index, route in
+                        Button {
+                            store.selectRouteAlternative(route)
+                        } label: {
+                            HStack {
+                                Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
+                                Text(routeOptionTitle(route, index: index))
+                                Spacer()
+                                Image(systemName: selectedRoute == route ? "checkmark.circle.fill" : "circle")
+                            }
+                            .padding(.vertical, 5)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("route.alternative.\(index)")
+                    }
+                }
+            }
+
+            routeStatus
+        }
+    }
+
+    private func routeEndpointRow(
+        icon: String,
+        title: String,
+        subtitle: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .foregroundStyle(.blue)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.subheadline.weight(.semibold))
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+            }
+            .padding(10)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var originLabel: String {
+        if let place = store.originPlace { return place.name }
+        if store.origin != nil { return "My Location" }
+        return "Search for a starting place"
+    }
+
+    private var destinationLabel: String {
+        if let place = store.destinationPlace { return place.name }
+        if let destination = store.destination { return coordinateLabel(destination) }
+        return "Search for a destination"
     }
 
     private func quickAction(
@@ -400,15 +629,167 @@ struct RootView: View {
     private func routeStatusTitle(_ response: IncidentRouteResponse) -> String {
         let distance = Measurement(value: response.distanceMeters, unit: UnitLength.meters)
         let formatted = distance.formatted(.measurement(width: .abbreviated, usage: .road))
+        let duration = response.expectedTravelTime.map { Duration.seconds($0).formatted(.units(width: .abbreviated)) }
+        let summary = [formatted, duration].compactMap { $0 }.joined(separator: " • ")
         return switch response.status {
-        case .complete: "Evidence-aware route • \(formatted)"
-        case .partial: "Partial route only • \(formatted)"
+        case .complete: "Evidence-aware route • \(summary)"
+        case .partial: "Partial route only • \(summary)"
         case .unavailable: "No verified route"
         }
     }
 
+    private var selectedRoute: IncidentRouteResponse? {
+        guard case let .route(response, _) = store.routeState else { return nil }
+        return response
+    }
+
+    private func routeOptionTitle(_ route: IncidentRouteResponse, index: Int) -> String {
+        let distance = Measurement(value: route.distanceMeters, unit: UnitLength.meters)
+            .formatted(.measurement(width: .abbreviated, usage: .road))
+        let duration = route.expectedTravelTime.map { Duration.seconds($0).formatted(.units(width: .abbreviated)) }
+        return ["Route \(index + 1)", duration, distance].compactMap { $0 }.joined(separator: " • ")
+    }
+
     private func coordinateLabel(_ value: IncidentCoordinate) -> String {
         String(format: "%.4f, %.4f", value.latitude, value.longitude)
+    }
+}
+
+private struct RouteEndpointSearchSheet: View {
+    @ObservedObject var store: WorldMapStore
+    let endpoint: RouteEndpointEditor
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+    @State private var results: [PlaceResult] = []
+    @State private var isSearching = false
+    @State private var message: String?
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField(endpoint.placeholder, text: $query)
+                        .textInputAutocapitalization(.words)
+                        .submitLabel(.search)
+                        .focused($isFocused)
+                        .onSubmit { Task { await search(immediate: true) } }
+                        .accessibilityIdentifier("route.endpoint.search")
+                    if isSearching {
+                        ProgressView().controlSize(.small)
+                    } else if !query.isEmpty {
+                        Button {
+                            query = ""
+                            results = []
+                            message = nil
+                            isFocused = true
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                        }
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Clear endpoint search")
+                    }
+                }
+                .padding(.horizontal, 14)
+                .frame(height: 50)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+                .padding(.horizontal)
+                .padding(.top, 8)
+
+                List {
+                    if endpoint == .origin {
+                        Button {
+                            store.requestCurrentLocationAsOrigin()
+                            dismiss()
+                        } label: {
+                            Label("My Location", systemImage: "location.fill")
+                        }
+                        .accessibilityIdentifier("route.endpoint.myLocation")
+                    }
+
+                    ForEach(results) { place in
+                        Button { choose(place) } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "mappin.circle.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(.blue)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(place.name).font(.body.weight(.semibold)).foregroundStyle(.primary)
+                                    if !place.detail.isEmpty {
+                                        Text(place.detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                    }
+                                }
+                            }
+                        }
+                        .accessibilityIdentifier("route.endpoint.result.\(place.id)")
+                    }
+
+                    if let message {
+                        Text(message)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("route.endpoint.message")
+                    }
+                }
+                .listStyle(.plain)
+            }
+            .navigationTitle(endpoint.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.large])
+        .onAppear {
+            query = endpoint == .origin ? (store.originPlace?.name ?? "") : (store.destinationPlace?.name ?? "")
+            isFocused = true
+        }
+        .task(id: query) {
+            await search(immediate: false)
+        }
+    }
+
+    @MainActor
+    private func search(immediate: Bool) async {
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard term.count >= 2 else {
+            results = []
+            message = nil
+            isSearching = false
+            return
+        }
+        if !immediate {
+            do { try await Task.sleep(for: .milliseconds(650)) }
+            catch { return }
+        }
+        guard !Task.isCancelled, query.trimmingCharacters(in: .whitespacesAndNewlines) == term else { return }
+        isSearching = true
+        message = nil
+        defer { isSearching = false }
+        do {
+            let found = try await store.endpointPlaces(query: term)
+            guard !Task.isCancelled, query.trimmingCharacters(in: .whitespacesAndNewlines) == term else { return }
+            results = found
+            if found.isEmpty { message = "No matching places found. Try a complete street address, city, or landmark." }
+        } catch is CancellationError {
+            return
+        } catch {
+            results = []
+            message = "Search is temporarily unavailable. Pause for a moment, then try again."
+        }
+    }
+
+    private func choose(_ place: PlaceResult) {
+        if endpoint == .origin {
+            store.setOrigin(place: place)
+        } else {
+            store.setDestination(place: place)
+        }
+        dismiss()
     }
 }
 
@@ -718,7 +1099,7 @@ private struct SettingsSheet: View {
                     Button("Refresh incident data") { Task { await store.refreshIncidents() } }
                 }
             }
-            .navigationTitle("AFTERMAP Settings")
+            .navigationTitle("Gaslight Maps Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

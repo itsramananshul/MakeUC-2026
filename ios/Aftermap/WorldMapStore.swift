@@ -55,12 +55,22 @@ final class WorldMapStore: ObservableObject {
     @Published var selectedRoad: IncidentRoad?
     @Published var query = ""
     @Published private(set) var places: [PlaceResult] = []
+    @Published private(set) var selectedPlace: PlaceResult?
+    @Published private(set) var originPlace: PlaceResult?
+    @Published private(set) var destinationPlace: PlaceResult?
     @Published private(set) var isSearching = false
     @Published private(set) var searchMessage: String?
     @Published var origin: IncidentCoordinate?
     @Published var destination: IncidentCoordinate?
+    @Published var travelMode: RouteTravelMode = .driving {
+        didSet {
+            routeState = .idle
+            routeAlternatives = []
+        }
+    }
     @Published var selectionMode: SelectionMode?
     @Published private(set) var routeState: RoutePreviewState = .idle
+    @Published private(set) var routeAlternatives: [IncidentRouteResponse] = []
     @Published private(set) var connection: ConnectionState = .loading
     @Published private(set) var lastUpdated: Date?
     @Published var cameraTarget: CameraTarget?
@@ -79,6 +89,7 @@ final class WorldMapStore: ObservableObject {
     private let defaults: UserDefaults
     private let urlSession: URLSession
     private var cameraRevision = 0
+    private var searchRevision = 0
     private enum PendingLocationUse {
         case origin(userInitiated: Bool)
         case report
@@ -183,48 +194,99 @@ final class WorldMapStore: ObservableObject {
     }
 
     func search() async {
+        _ = await search(selectFirstResult: false, debounce: true)
+    }
+
+    @discardableResult
+    func submitSearch() async -> Bool {
+        await search(selectFirstResult: true, debounce: false)
+    }
+
+    private func search(selectFirstResult: Bool, debounce: Bool) async -> Bool {
         let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard term.count >= 2 else {
             places = []
             isSearching = false
             searchMessage = nil
-            return
+            return false
         }
+
+        if let selectedPlace, selectedPlace.name == term {
+            isSearching = false
+            return true
+        }
+
+        searchRevision += 1
+        let revision = searchRevision
         isSearching = true
         searchMessage = nil
         defer {
-            if query.trimmingCharacters(in: .whitespacesAndNewlines) == term {
+            if revision == searchRevision,
+               query.trimmingCharacters(in: .whitespacesAndNewlines) == term {
                 isSearching = false
             }
         }
         do {
-            // The public geocoder is rate limited. Wait for a real typing pause so
-            // ordinary text entry produces one request instead of one per letter.
-            try await Task.sleep(for: .milliseconds(850))
-            guard !Task.isCancelled,
-                  query.trimmingCharacters(in: .whitespacesAndNewlines) == term else { return }
-
-            do {
-                places = try await client.places(query: term)
-            } catch {
-                guard isSearchThrottle(error) else { throw error }
-                try await Task.sleep(for: .milliseconds(900))
-                guard !Task.isCancelled,
-                      query.trimmingCharacters(in: .whitespacesAndNewlines) == term else { return }
-                places = try await client.places(query: term)
+            if debounce {
+                // The public geocoder is rate limited. Wait for a real typing pause so
+                // ordinary text entry produces one request instead of one per letter.
+                try await Task.sleep(for: .milliseconds(850))
             }
+            guard !Task.isCancelled, revision == searchRevision,
+                  query.trimmingCharacters(in: .whitespacesAndNewlines) == term else { return false }
 
-            if places.isEmpty {
+            let found: [PlaceResult]
+#if DEBUG
+            if ProcessInfo.processInfo.environment["AFTERMAP_SEARCH_PREVIEW"] == "1" {
+                found = [PlaceResult(
+                    id: "gandhinagar-preview",
+                    name: "Gandhinagar",
+                    detail: "Gujarat, India",
+                    latitude: 23.2156,
+                    longitude: 72.6369
+                )]
+            } else {
+                found = try await fetchPlaces(term: term, revision: revision)
+            }
+#else
+            found = try await fetchPlaces(term: term, revision: revision)
+#endif
+
+            guard revision == searchRevision,
+                  query.trimmingCharacters(in: .whitespacesAndNewlines) == term else { return false }
+            places = found
+
+            if found.isEmpty {
                 searchMessage = "No matching places found. Try a city, address, or landmark."
+                return false
             }
+            if selectFirstResult, let first = found.first {
+                choosePlace(first)
+            }
+            return true
         } catch is CancellationError {
-            return
+            return false
         } catch {
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, revision == searchRevision else { return false }
             places = []
             searchMessage = isSearchThrottle(error)
                 ? "Search is busy. Pause for a moment, then try again."
                 : "Place search is temporarily unavailable. Try again shortly."
+            return false
+        }
+    }
+
+    private func fetchPlaces(term: String, revision: Int) async throws -> [PlaceResult] {
+        do {
+            return try await client.places(query: term)
+        } catch {
+            guard isSearchThrottle(error) else { throw error }
+            try await Task.sleep(for: .milliseconds(900))
+            guard !Task.isCancelled, revision == searchRevision,
+                  query.trimmingCharacters(in: .whitespacesAndNewlines) == term else {
+                throw CancellationError()
+            }
+            return try await client.places(query: term)
         }
     }
 
@@ -233,18 +295,86 @@ final class WorldMapStore: ObservableObject {
     }
 
     func choosePlace(_ place: PlaceResult) {
-        destination = place.coordinate
+        searchRevision += 1
+        selectedPlace = place
         query = place.name
         places = []
+        isSearching = false
         searchMessage = nil
         focus(on: place.coordinate, zoom: 14)
+    }
+
+    func queryDidChange() {
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if selectedPlace?.name != term { selectedPlace = nil }
+    }
+
+    func clearSearch() {
+        searchRevision += 1
+        query = ""
+        places = []
+        selectedPlace = nil
+        isSearching = false
+        searchMessage = nil
+    }
+
+    func useSelectedPlaceAsDestination() {
+        guard let selectedPlace else { return }
+        destination = selectedPlace.coordinate
+        destinationPlace = selectedPlace
+        routeState = .idle
+        routeAlternatives = []
+    }
+
+    func setOrigin(place: PlaceResult) {
+        origin = place.coordinate
+        originPlace = place
+        routeState = .idle
+        routeAlternatives = []
+        focus(on: place.coordinate, zoom: 14)
+        calculateRouteWhenReady()
+    }
+
+    func setDestination(place: PlaceResult) {
+        destination = place.coordinate
+        destinationPlace = place
+        routeState = .idle
+        routeAlternatives = []
+        focus(on: place.coordinate, zoom: 14)
+        calculateRouteWhenReady()
+    }
+
+    func endpointPlaces(query term: String) async throws -> [PlaceResult] {
+#if DEBUG
+        if ProcessInfo.processInfo.environment["AFTERMAP_SEARCH_PREVIEW"] == "1" {
+            let isStart = term.localizedCaseInsensitiveContains("start")
+            return [PlaceResult(
+                id: isStart ? "start-preview" : "destination-preview",
+                name: isStart ? "Cincinnati" : "Highland Coffee House",
+                detail: isStart ? "Ohio, United States" : "Cincinnati, Ohio",
+                latitude: isStart ? 39.1031 : 39.1325,
+                longitude: isStart ? -84.5120 : -84.4969
+            )]
+        }
+#endif
+        do {
+            return try await client.places(query: term)
+        } catch {
+            guard isSearchThrottle(error) else { throw error }
+            try await Task.sleep(for: .milliseconds(900))
+            return try await client.places(query: term)
+        }
     }
 
     func chooseCoordinate(_ coordinate: CLLocationCoordinate2D) {
         let value = IncidentCoordinate(coordinate)
         switch selectionMode {
-        case .origin: origin = value
-        case .destination: destination = value
+        case .origin:
+            origin = value
+            originPlace = nil
+        case .destination:
+            destination = value
+            destinationPlace = nil
         case .reportLocation:
             guard let incident = selectedIncident, incident.bounds.contains(coordinate) else {
                 notice = "Choose a point inside the selected incident."
@@ -302,8 +432,10 @@ final class WorldMapStore: ObservableObject {
         switch pendingLocationUse {
         case .origin:
             origin = value
+            originPlace = nil
             routeState = .idle
             focus(on: value, zoom: 15)
+            calculateRouteWhenReady()
         case .report:
             guard let incident = selectedIncident, incident.bounds.contains(coordinate) else {
                 pendingLocationUse = nil
@@ -321,6 +453,11 @@ final class WorldMapStore: ObservableObject {
             return
         }
         pendingLocationUse = nil
+    }
+
+    private func calculateRouteWhenReady() {
+        guard origin != nil, destination != nil else { return }
+        Task { await previewRoute() }
     }
 
     func locationFailed(_ message: String) {
@@ -357,33 +494,71 @@ final class WorldMapStore: ObservableObject {
         }
 
         routeState = .calculating
+        routeAlternatives = []
         let endpointIncident = incidents.first(where: {
             $0.bounds.contains(origin.coordinate) || $0.bounds.contains(destination.coordinate)
         })
 
         do {
             if let incident = endpointIncident {
-                let response = try await client.route(incidentId: incident.id, origin: origin, destination: destination)
+                guard travelMode == .walking else {
+                    routeState = .unavailable("Only verified walking passages are available inside \(incident.name). Switch to Walk.")
+                    return
+                }
+                let response = try await client.route(
+                    incidentId: incident.id,
+                    origin: origin,
+                    destination: destination,
+                    mode: travelMode
+                )
                 if response.status == .unavailable {
                     routeState = .unavailable(response.reason)
                 } else if let other = incidents.first(where: {
                     $0.id != incident.id && $0.bounds.intersects(response.coordinates)
                 }) {
                     routeState = .unavailable(
-                        "The verified route for \(incident.name) also enters \(other.name), so AFTERMAP withheld it pending cross-incident verification."
+                        "The verified route for \(incident.name) also enters \(other.name), so Gaslight Maps withheld it pending cross-incident verification."
                     )
                 } else {
+                    routeAlternatives = [response]
                     routeState = .route(response, affectedIncidentName: incident.name)
                 }
                 return
             }
 
-            let ordinary = try await client.ordinaryRoute(origin: origin, destination: destination)
+            if travelMode != .cycling {
+                let candidates = try await AppleDirectionsService().routes(
+                    origin: origin,
+                    destination: destination,
+                    mode: travelMode
+                )
+                let safeRoutes = candidates.filter { route in
+                    !incidents.contains(where: { $0.bounds.intersects(route.coordinates) })
+                }
+                guard let first = safeRoutes.first else {
+                    routeState = .unavailable(
+                        candidates.isEmpty
+                            ? "No \(travelMode.shortLabel.lowercased()) route is available for this trip."
+                            : "Every available \(travelMode.shortLabel.lowercased()) route enters an affected area, so Gaslight Maps withheld them."
+                    )
+                    return
+                }
+                routeAlternatives = safeRoutes
+                routeState = .route(first, affectedIncidentName: nil)
+                return
+            }
+
+            let ordinary = try await client.ordinaryRoute(
+                origin: origin,
+                destination: destination,
+                mode: travelMode
+            )
             if let affected = incidents.first(where: { $0.bounds.intersects(ordinary.coordinates) }) {
                 routeState = .unavailable(
-                    "The proposed route enters \(affected.name), so AFTERMAP withheld it pending incident-road verification."
+                    "The proposed route enters \(affected.name), so Gaslight Maps withheld it pending incident-road verification."
                 )
             } else {
+                if ordinary.status != .unavailable { routeAlternatives = [ordinary] }
                 routeState = ordinary.status == .unavailable
                     ? .unavailable(ordinary.reason)
                     : .route(ordinary, affectedIncidentName: nil)
@@ -391,6 +566,15 @@ final class WorldMapStore: ObservableObject {
         } catch {
             routeState = .unavailable(error.localizedDescription)
         }
+    }
+
+    func selectRouteAlternative(_ route: IncidentRouteResponse) {
+        guard routeAlternatives.contains(route),
+              !incidents.contains(where: { $0.bounds.intersects(route.coordinates) }) else {
+            routeState = .unavailable("That route can no longer be verified against the current incident map.")
+            return
+        }
+        routeState = .route(route, affectedIncidentName: nil)
     }
 
     func createIncident(name: String, center: IncidentCoordinate, widthKilometers: Double, operatorKey: String) async -> IncidentCreationResponse? {

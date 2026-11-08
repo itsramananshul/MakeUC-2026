@@ -17,7 +17,11 @@ export const incidentInput = z.object({
     displayName: reporterName, note: reportNote, photoBase64: reportPhoto,
   }).refine(value => !!value.note || !!value.photoBase64, "Add a note or a photo.").optional(),
 });
-export const routeInput = z.object({ origin: coordinate, destination: coordinate });
+export const routeInput = z.object({
+  origin: coordinate,
+  destination: coordinate,
+  mode: z.enum(["driving", "walking", "cycling", "transit"]).default("walking"),
+});
 export const reportInput = z.object({
   id: z.string().regex(/^[A-Za-z0-9_-]{8,80}$/),
   displayName: reporterName,

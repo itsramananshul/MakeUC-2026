@@ -24,6 +24,7 @@
 		CEDF8DA6D6D363442462546B /* LiveMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91CC18DE95F66286F4CD570F /* LiveMapView.swift */; };
 		D76022B64A2C507BE0063C62 /* FieldSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDCB0D5B415863ECEA04F01F /* FieldSessionView.swift */; };
 		E1570A48EDA658ACFBC97FD0 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170F548426782565848D574D /* RootView.swift */; };
+		EC962AB868EBECBA93D03AE3 /* AppleDirectionsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B189C5B52328A8192CBAAB97 /* AppleDirectionsService.swift */; };
 		F4230040388D4CCBDE2F676D /* WorldMapStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1D7399953B5A2CA3698307 /* WorldMapStore.swift */; };
 		FC7FAC0AC7D970CBCA035EC2 /* IncidentPhotoPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D97E8B02452983F55841F551 /* IncidentPhotoPicker.swift */; };
 /* End PBXBuildFile section */
@@ -61,6 +62,7 @@
 		7BC429A58DFB7EBA608E549F /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
 		827A0FBB0E2BB06965F38CC3 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		91CC18DE95F66286F4CD570F /* LiveMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveMapView.swift; sourceTree = "<group>"; };
+		B189C5B52328A8192CBAAB97 /* AppleDirectionsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleDirectionsService.swift; sourceTree = "<group>"; };
 		B20F68C6900E0126A99E7379 /* CaptureTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureTools.swift; sourceTree = "<group>"; };
 		B85F4C6DD1F0CCB9D6BB057B /* IncidentModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IncidentModels.swift; sourceTree = "<group>"; };
 		CA1D7399953B5A2CA3698307 /* WorldMapStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorldMapStore.swift; sourceTree = "<group>"; };
@@ -87,6 +89,7 @@
 			children = (
 				54D95E8ED582545650F1404C /* AftermapApp.swift */,
 				1CD38EEAC0208C87EF1A2F08 /* APIClient.swift */,
+				B189C5B52328A8192CBAAB97 /* AppleDirectionsService.swift */,
 				D95B9A8273CC1913AA8FFBDE /* Assets.xcassets */,
 				B20F68C6900E0126A99E7379 /* CaptureTools.swift */,
 				CDCB0D5B415863ECEA04F01F /* FieldSessionView.swift */,
@@ -265,6 +268,7 @@
 			files = (
 				2D55E8BB271F496EA152E866 /* APIClient.swift in Sources */,
 				6182C8E172BE473910B7346F /* AftermapApp.swift in Sources */,
+				EC962AB868EBECBA93D03AE3 /* AppleDirectionsService.swift in Sources */,
 				88566C4D95C0739D638CAB17 /* CaptureTools.swift in Sources */,
 				D76022B64A2C507BE0063C62 /* FieldSessionView.swift in Sources */,
 				CE3BD211BC4AAB78A2B9C788 /* IncidentAPIClient.swift in Sources */,
@@ -343,7 +347,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.makeuc.aftermap.tests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Aftermap.app/Aftermap";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Gaslight Maps.app/Gaslight Maps";
 			};
 			name = Debug;
 		};
@@ -418,6 +422,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.makeuc.aftermap;
 				PRODUCT_MODULE_NAME = Aftermap;
+				PRODUCT_NAME = "Gaslight Maps";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -500,7 +505,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.makeuc.aftermap.tests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Aftermap.app/Aftermap";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Gaslight Maps.app/Gaslight Maps";
 			};
 			name = Release;
 		};
@@ -535,6 +540,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.makeuc.aftermap;
 				PRODUCT_MODULE_NAME = Aftermap;
+				PRODUCT_NAME = "Gaslight Maps";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;
 			};

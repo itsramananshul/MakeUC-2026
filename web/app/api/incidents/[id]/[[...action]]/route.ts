@@ -67,7 +67,9 @@ export async function POST(request: Request, context: Context) {
   try {
     const operation = action.join("/");
     if (operation === "route") {
-      const { origin, destination } = await readInput(request, routeInput);
+      const { origin, destination, mode } = await readInput(request, routeInput);
+      if (mode !== "walking") return json({ status: "unavailable", coordinates: [], distanceMeters: 0,
+        reason: "Only verified walking passages are available inside this incident. Switch to Walk." });
       return json(incidentRoute(getIncident(id), origin, destination));
     }
     authorizeIncident(id, bearer(request));

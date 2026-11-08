@@ -1,4 +1,5 @@
 export type Coordinate = { latitude: number; longitude: number };
+export type RouteTravelMode = "driving" | "walking" | "cycling" | "transit";
 export type GeographicBounds = { west: number; south: number; east: number; north: number };
 export type RoadState = "unknown" | "open" | "blocked" | "hazard" | "conflict";
 export type Road = { id: string; from: Coordinate; to: Coordinate; state: RoadState; label: string };

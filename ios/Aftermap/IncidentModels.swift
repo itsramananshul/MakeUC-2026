@@ -107,9 +107,35 @@ struct IncidentSurveyFile: Equatable {
     var data: Data
 }
 
+enum RouteTravelMode: String, Codable, CaseIterable {
+    case driving
+    case walking
+    case cycling
+    case transit
+
+    var shortLabel: String {
+        switch self {
+        case .driving: "Drive"
+        case .walking: "Walk"
+        case .cycling: "Bike"
+        case .transit: "Transit"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .driving: "car.fill"
+        case .walking: "figure.walk"
+        case .cycling: "bicycle"
+        case .transit: "tram.fill"
+        }
+    }
+}
+
 struct IncidentRouteRequest: Codable {
     var origin: IncidentCoordinate
     var destination: IncidentCoordinate
+    var mode: RouteTravelMode = .walking
 }
 
 struct IncidentRouteResponse: Codable, Equatable {
@@ -120,6 +146,7 @@ struct IncidentRouteResponse: Codable, Equatable {
     var reason: String
     var startLabel: String?
     var endLabel: String?
+    var expectedTravelTime: Double? = nil
 }
 
 struct IncidentRoad: Codable, Identifiable, Equatable {

@@ -119,9 +119,9 @@ export default function Aftermap() {
 
   return <main className={`workspace ${sidebar ? "sidebar-visible" : "sidebar-hidden"}`}>
     <a className="skip-link" href="#map-stage">Skip to map</a>
-    {sidebar && <aside className="sidebar" aria-label="AFTERMAP controls">
+    {sidebar && <aside className="sidebar" aria-label="Gaslight Maps controls">
       <header className="sidebar-header">
-        <a href="/" className="brand"><span className="brand-mark"><Navigation size={16} fill="currentColor" /></span><span>Aftermap</span></a>
+        <a href="/" className="brand"><span className="brand-mark"><Navigation size={16} fill="currentColor" /></span><span>Gaslight Maps</span></a>
         <button className="toggle-sidebar icon-button" type="button" aria-label="Hide sidebar" onClick={() => setSidebar(false)}><PanelLeft size={17} /></button>
       </header>
 

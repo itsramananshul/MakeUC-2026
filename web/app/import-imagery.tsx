@@ -55,7 +55,7 @@ export default function ImportImagery({ code, onImport }: { code: string; onImpo
       <button type="button" aria-pressed={mode === "tiff"} disabled={!!processing || busy} onClick={() => { setMode("tiff"); setFiles([]); setError(""); }}>GeoTIFF mosaic</button>
       <button type="button" aria-pressed={mode === "raw"} disabled={!!processing || busy} onClick={() => { setMode("raw"); setFiles([]); setError(""); }}>Drone photos</button>
     </div>
-    <p>{mode === "tiff" ? "Import one or more georeferenced images. AFTERMAP aligns them by location and creates a shared aerial layer." : "Select overlapping, geotagged aerial photographs. The drone worker stitches them into a map and returns a georeferenced image."}</p>
+    <p>{mode === "tiff" ? "Import one or more georeferenced images. Gaslight Maps aligns them by location and creates a shared aerial layer." : "Select overlapping, geotagged aerial photographs. The drone worker stitches them into a map and returns a georeferenced image."}</p>
     <label className="upload-well" key={mode}>
       <Images size={22} /><strong>{files.length ? `${files.length} ${files.length === 1 ? "file" : "files"} selected` : "Choose imagery…"}</strong>
       <span>{mode === "tiff" ? "1–8 GeoTIFFs" : "5–40 JPEG or PNG images"} · 72 MB total</span>

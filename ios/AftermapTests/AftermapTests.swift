@@ -115,7 +115,7 @@ final class AftermapTests: XCTestCase {
 
     @MainActor
     func testSatelliteIsTheDefaultMapStyleAndStreetsRemainAvailable() {
-        let suite = "GaslightMaps.MapStyle.\(UUID().uuidString)"
+        let suite = "AFTERMAP.MapStyle.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = WorldMapStore(defaults: defaults)
@@ -237,6 +237,7 @@ final class AftermapTests: XCTestCase {
             let object = try XCTUnwrap(JSONSerialization.jsonObject(with: try requestBody(request)) as? [String: Any])
             XCTAssertNotNil(object["origin"])
             XCTAssertNotNil(object["destination"])
+            XCTAssertEqual(object["mode"] as? String, "walking")
             let data = #"{"status":"unavailable","coordinates":[],"distanceMeters":0,"reason":"No verified path around the affected area."}"#.data(using: .utf8)!
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
@@ -247,6 +248,51 @@ final class AftermapTests: XCTestCase {
         )
         XCTAssertEqual(route.status, .unavailable)
         XCTAssertEqual(route.reason, "No verified path around the affected area.")
+    }
+
+    @MainActor
+    func testSearchSelectionOpensPlaceCardBeforeBecomingDestination() {
+        let suite = "AFTERMAP.PlaceCard.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = WorldMapStore(defaults: defaults)
+        let place = PlaceResult(
+            id: "gandhinagar",
+            name: "Gandhinagar",
+            detail: "Gujarat, India",
+            latitude: 23.2156,
+            longitude: 72.6369
+        )
+
+        store.choosePlace(place)
+
+        XCTAssertEqual(store.selectedPlace, place)
+        XCTAssertNil(store.destination)
+
+        store.useSelectedPlaceAsDestination()
+
+        XCTAssertEqual(store.destination, place.coordinate)
+        XCTAssertEqual(store.travelMode, .driving)
+    }
+
+    func testRouteRequestCarriesSelectedTravelMode() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        MockURLProtocol.handler = { request in
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: try requestBody(request)) as? [String: Any])
+            XCTAssertEqual(object["mode"] as? String, "cycling")
+            let data = #"{"status":"complete","coordinates":[{"latitude":40,"longitude":-73},{"latitude":40.1,"longitude":-73.1}],"distanceMeters":15000,"reason":"Standard cycling route."}"#.data(using: .utf8)!
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
+        }
+
+        let route = try await IncidentAPIClient(baseURL: "https://aftermap.example", urlSession: session).ordinaryRoute(
+            origin: IncidentCoordinate(latitude: 40, longitude: -73),
+            destination: IncidentCoordinate(latitude: 40.1, longitude: -73.1),
+            mode: .cycling
+        )
+
+        XCTAssertEqual(route.status, .complete)
     }
 
     @MainActor
@@ -263,7 +309,7 @@ final class AftermapTests: XCTestCase {
             let data = #"{"status":"complete","coordinates":[{"latitude":39.05,"longitude":-84.95},{"latitude":39.05,"longitude":-84.75},{"latitude":39.05,"longitude":-84.6}],"distanceMeters":22000,"reason":"Verified around Flood A."}"#.data(using: .utf8)!
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
-        let suite = "GaslightMaps.CrossIncidentRoute.\(UUID().uuidString)"
+        let suite = "AFTERMAP.CrossIncidentRoute.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = WorldMapStore(defaults: defaults, urlSession: session)
@@ -271,6 +317,7 @@ final class AftermapTests: XCTestCase {
         await store.refreshIncidents()
         store.origin = IncidentCoordinate(latitude: 39.05, longitude: -84.95)
         store.destination = IncidentCoordinate(latitude: 39.05, longitude: -84.6)
+        store.travelMode = .walking
 
         await store.previewRoute()
 
@@ -357,7 +404,7 @@ final class AftermapTests: XCTestCase {
         configuration.protocolClasses = [MockURLProtocol.self]
         let session = URLSession(configuration: configuration)
         MockURLProtocol.handler = { _ in throw URLError(.cancelled) }
-        let suite = "GaslightMaps.SearchCancellation.\(UUID().uuidString)"
+        let suite = "AFTERMAP.SearchCancellation.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = WorldMapStore(defaults: defaults, urlSession: session)
@@ -402,7 +449,7 @@ final class AftermapTests: XCTestCase {
 
     @MainActor
     func testAcceptedAutomaticLocationBecomesRouteStart() {
-        let suite = "GaslightMaps.AutomaticLocation.\(UUID().uuidString)"
+        let suite = "AFTERMAP.AutomaticLocation.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = WorldMapStore(defaults: defaults)
@@ -417,7 +464,7 @@ final class AftermapTests: XCTestCase {
 
     @MainActor
     func testDeclinedAutomaticLocationStaysSilent() {
-        let suite = "GaslightMaps.DeclinedLocation.\(UUID().uuidString)"
+        let suite = "AFTERMAP.DeclinedLocation.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = WorldMapStore(defaults: defaults)
@@ -431,7 +478,7 @@ final class AftermapTests: XCTestCase {
 
     @MainActor
     func testDeclinedManualLocationShowsHelpfulNotice() {
-        let suite = "GaslightMaps.ManualLocation.\(UUID().uuidString)"
+        let suite = "AFTERMAP.ManualLocation.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = WorldMapStore(defaults: defaults)

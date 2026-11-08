@@ -41,7 +41,7 @@ struct FieldSessionView: View {
                     Circle().fill(connectionColor).frame(width: 8, height: 8)
                     Text(connectionLabel).font(.caption2.weight(.black)).foregroundStyle(connectionColor)
                 }
-                Text(store.snapshot?.session.name ?? "AFTERMAP")
+                Text(store.snapshot?.session.name ?? "Gaslight Maps")
                     .font(.headline).lineLimit(1)
                 Text(store.snapshot?.session.code ?? store.sessionCode)
                     .font(.caption2.monospaced().weight(.bold)).foregroundStyle(AftermapTheme.muted)

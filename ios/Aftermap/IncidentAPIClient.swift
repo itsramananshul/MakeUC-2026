@@ -32,15 +32,28 @@ struct IncidentAPIClient {
         return response.places
     }
 
-    func ordinaryRoute(origin: IncidentCoordinate, destination: IncidentCoordinate) async throws -> IncidentRouteResponse {
-        try await send(path: "api/routes", method: "POST", body: IncidentRouteRequest(origin: origin, destination: destination))
+    func ordinaryRoute(
+        origin: IncidentCoordinate,
+        destination: IncidentCoordinate,
+        mode: RouteTravelMode = .walking
+    ) async throws -> IncidentRouteResponse {
+        try await send(
+            path: "api/routes",
+            method: "POST",
+            body: IncidentRouteRequest(origin: origin, destination: destination, mode: mode)
+        )
     }
 
-    func route(incidentId: String, origin: IncidentCoordinate, destination: IncidentCoordinate) async throws -> IncidentRouteResponse {
+    func route(
+        incidentId: String,
+        origin: IncidentCoordinate,
+        destination: IncidentCoordinate,
+        mode: RouteTravelMode = .walking
+    ) async throws -> IncidentRouteResponse {
         try await send(
             path: "api/incidents/\(escaped(incidentId))/route",
             method: "POST",
-            body: IncidentRouteRequest(origin: origin, destination: destination)
+            body: IncidentRouteRequest(origin: origin, destination: destination, mode: mode)
         )
     }
 
