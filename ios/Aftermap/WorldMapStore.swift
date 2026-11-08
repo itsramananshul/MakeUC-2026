@@ -1,7 +1,6 @@
 import AVFoundation
 import CoreLocation
 import Foundation
-import MapKit
 
 @MainActor
 final class WorldMapStore: ObservableObject {
@@ -54,6 +53,7 @@ final class WorldMapStore: ObservableObject {
 
     @Published var serverURL: String
     @Published private(set) var incidents: [Incident] = []
+    @Published private(set) var recoveryImagery: [IncidentImagery] = []
     @Published private(set) var selectedIncident: Incident?
     @Published private(set) var incidentDetail: IncidentDetail?
     @Published var selectedRoad: IncidentRoad?
@@ -61,6 +61,7 @@ final class WorldMapStore: ObservableObject {
     @Published private(set) var places: [PlaceResult] = []
     @Published private(set) var selectedPlace: PlaceResult?
     @Published private(set) var originPlace: PlaceResult?
+    @Published private(set) var originUsesCurrentLocation = false
     @Published private(set) var destinationPlace: PlaceResult?
     @Published private(set) var isSearching = false
     @Published private(set) var searchMessage: String?
@@ -89,6 +90,7 @@ final class WorldMapStore: ObservableObject {
     @Published private(set) var navigationState: NavigationSessionState = .idle
     @Published private(set) var navigationHeading: CLLocationDirection?
     @Published private(set) var navigationCameraRevision = 0
+    @Published private(set) var navigationCameraFollowing = true
     @Published private(set) var navigationRenderRevision = 0
     @Published private(set) var navigationRemainingCoordinates: [IncidentCoordinate] = []
     @Published var reportLocation: IncidentCoordinate?
@@ -142,6 +144,15 @@ final class WorldMapStore: ObservableObject {
         if let testReportKey = ProcessInfo.processInfo.environment["AFTERMAP_TEST_REPORT_KEY"],
            !testReportKey.isEmpty {
             reportKey = testReportKey
+        }
+        let environment = ProcessInfo.processInfo.environment
+        if let latitudeText = environment["AFTERMAP_FOCUS_LATITUDE"],
+           let longitudeText = environment["AFTERMAP_FOCUS_LONGITUDE"],
+           let zoomText = environment["AFTERMAP_FOCUS_ZOOM"],
+           let latitude = Double(latitudeText),
+           let longitude = Double(longitudeText),
+           let zoom = Double(zoomText) {
+            focus(on: IncidentCoordinate(latitude: latitude, longitude: longitude), zoom: zoom)
         }
         if ProcessInfo.processInfo.arguments.contains("-aftermapIncidentPreview") ||
             ProcessInfo.processInfo.environment["AFTERMAP_INCIDENT_PREVIEW"] == "1" {
@@ -250,12 +261,15 @@ final class WorldMapStore: ObservableObject {
     }
 
     func refreshIncidents() async {
+        if isIncidentPreviewMode { return }
         do {
             // Training fixtures belong in rehearsals, not in the public navigation
             // experience. Never let a seeded exercise tint the live map or influence
             // a real trip.
-            let latest = try await client.incidents().filter(Self.isLiveIncident)
+            let world = try await client.world()
+            let latest = world.incidents.filter(Self.isLiveIncident)
             incidents = latest
+            recoveryImagery = (world.recoveryImagery ?? []).sorted { $0.timestamp < $1.timestamp }
             lastUpdated = Date()
             connection = .live
 
@@ -359,33 +373,25 @@ final class WorldMapStore: ObservableObject {
     }
 
     private func fetchPlaces(term: String, revision: Int) async throws -> [PlaceResult] {
-        if let canonical = await sharedCanonicalPlaces(term: term), !canonical.isEmpty {
-            return canonical
-        }
-        if shouldUseNativePlaceSearch,
-           let native = try? await NativePlaceSearch.places(query: term, near: searchReferenceCoordinate),
-           !native.isEmpty {
-            return sortPlacesByDistance(native)
-        }
         do {
             return sortPlacesByDistance(try await client.places(query: term, near: searchReferenceCoordinate))
         } catch {
-            guard isSearchThrottle(error) else { throw error }
-            try await Task.sleep(for: .milliseconds(900))
-            guard !Task.isCancelled, revision == searchRevision,
-                  query.trimmingCharacters(in: .whitespacesAndNewlines) == term else {
-                throw CancellationError()
+            if isSearchThrottle(error) {
+                try await Task.sleep(for: .milliseconds(900))
+                guard !Task.isCancelled, revision == searchRevision,
+                      query.trimmingCharacters(in: .whitespacesAndNewlines) == term else {
+                    throw CancellationError()
+                }
+                if let retried = try? await client.places(query: term, near: searchReferenceCoordinate) {
+                    return sortPlacesByDistance(retried)
+                }
             }
-            return sortPlacesByDistance(try await client.places(query: term, near: searchReferenceCoordinate))
+            throw error
         }
     }
 
     private var searchReferenceCoordinate: IncidentCoordinate? {
         userCoordinate ?? origin ?? cameraTarget?.coordinate
-    }
-
-    private var shouldUseNativePlaceSearch: Bool {
-        urlSession === URLSession.shared
     }
 
     private func sortPlacesByDistance(_ values: [PlaceResult]) -> [PlaceResult] {
@@ -441,6 +447,7 @@ final class WorldMapStore: ObservableObject {
         stopNavigation(announce: false)
         origin = place.coordinate
         originPlace = place
+        originUsesCurrentLocation = false
         routeState = .idle
         routeAlternatives = []
         focus(on: place.coordinate, zoom: 14)
@@ -470,20 +477,16 @@ final class WorldMapStore: ObservableObject {
             )]
         }
 #endif
-        if let canonical = await sharedCanonicalPlaces(term: term), !canonical.isEmpty {
-            return canonical
-        }
-        if shouldUseNativePlaceSearch,
-           let native = try? await NativePlaceSearch.places(query: term, near: searchReferenceCoordinate),
-           !native.isEmpty {
-            return sortPlacesByDistance(native)
-        }
         do {
             return sortPlacesByDistance(try await client.places(query: term, near: searchReferenceCoordinate))
         } catch {
-            guard isSearchThrottle(error) else { throw error }
-            try await Task.sleep(for: .milliseconds(900))
-            return sortPlacesByDistance(try await client.places(query: term, near: searchReferenceCoordinate))
+            if isSearchThrottle(error) {
+                try await Task.sleep(for: .milliseconds(900))
+                if let retried = try? await client.places(query: term, near: searchReferenceCoordinate) {
+                    return sortPlacesByDistance(retried)
+                }
+            }
+            throw error
         }
     }
 
@@ -497,23 +500,21 @@ final class WorldMapStore: ObservableObject {
         return !["demo", "exercise", "simulation", "simulated"].contains(where: descriptor.contains)
     }
 
-    private func sharedCanonicalPlaces(term: String) async -> [PlaceResult]? {
-        guard let places = try? await client.canonicalPlaces(query: term) else { return nil }
-        let canonical = places.filter { $0.id.hasPrefix("canonical-") }
-        return canonical.isEmpty ? nil : sortPlacesByDistance(canonical)
-    }
-
     func chooseCoordinate(_ coordinate: CLLocationCoordinate2D) {
         let value = IncidentCoordinate(coordinate)
+        var shouldCalculateRoute = false
         switch selectionMode {
         case .origin:
             stopNavigation(announce: false)
             origin = value
             originPlace = nil
+            originUsesCurrentLocation = false
+            shouldCalculateRoute = true
         case .destination:
             stopNavigation(announce: false)
             destination = value
             destinationPlace = nil
+            shouldCalculateRoute = true
         case .reportLocation:
             guard let incident = selectedIncident, incident.bounds.contains(coordinate) else {
                 notice = "Choose a point inside the selected incident."
@@ -530,6 +531,8 @@ final class WorldMapStore: ObservableObject {
         }
         selectionMode = nil
         routeState = .idle
+        routeAlternatives = []
+        if shouldCalculateRoute { calculateRouteWhenReady() }
     }
 
     func setSelectionMode(_ mode: SelectionMode) {
@@ -583,6 +586,7 @@ final class WorldMapStore: ObservableObject {
         case .origin:
             origin = value
             originPlace = nil
+            originUsesCurrentLocation = true
             routeState = .idle
             focus(on: value, zoom: 15)
             calculateRouteWhenReady()
@@ -734,8 +738,14 @@ final class WorldMapStore: ObservableObject {
         navigationState != .idle
     }
 
+    var showsSurveyImageryOnMap: Bool {
+        guard navigationState == .idle else { return false }
+        if case .route = routeState { return false }
+        return true
+    }
+
     var followsNavigationCamera: Bool {
-        navigationState.keepsLocationTrackingActive
+        navigationState.keepsLocationTrackingActive && navigationCameraFollowing
     }
 
     var canStartNavigation: Bool {
@@ -744,6 +754,28 @@ final class WorldMapStore: ObservableObject {
             && route.coordinates.count > 1
             && destination != nil
             && !route.hasUnverifiedSegments
+    }
+
+    var requiresRoutePreview: Bool {
+        guard let origin, !originUsesCurrentLocation else { return false }
+        guard let lastUserLocation else { return true }
+        let selectedStart = CLLocation(latitude: origin.latitude, longitude: origin.longitude)
+        return lastUserLocation.distance(from: selectedStart) > 250
+    }
+
+    func showRoutePreview(_ route: IncidentRouteResponse) {
+        selectRouteAlternative(route)
+        notice = nil
+        guard !route.coordinates.isEmpty else { return }
+        let latitudes = route.coordinates.map(\.latitude)
+        let longitudes = route.coordinates.map(\.longitude)
+        guard let south = latitudes.min(), let north = latitudes.max(),
+              let west = longitudes.min(), let east = longitudes.max() else { return }
+        let center = IncidentCoordinate(latitude: (south + north) / 2, longitude: (west + east) / 2)
+        let longitudeScale = max(0.2, cos(center.latitude * .pi / 180))
+        let span = max(north - south, (east - west) * longitudeScale, 0.000_01)
+        let zoom = min(16, max(7, log2(360 / span) - 1.4))
+        focus(on: center, zoom: zoom)
     }
 
     @discardableResult
@@ -761,6 +793,19 @@ final class WorldMapStore: ObservableObject {
             return false
         }
 
+        if !originUsesCurrentLocation {
+            guard let origin, let lastUserLocation else {
+                notice = "Route preview is ready. To begin live guidance from this selected start, move to the start or choose My Location."
+                return false
+            }
+            let selectedStart = CLLocation(latitude: origin.latitude, longitude: origin.longitude)
+            guard lastUserLocation.distance(from: selectedStart) <= 250 else {
+                let name = originPlace?.name ?? "the selected start"
+                notice = "Showing the route from \(name). You’re not near that start, so live guidance has not begun. Choose My Location to navigate from where you are."
+                return false
+            }
+        }
+
         var shouldTrackLiveLocation = enableLiveTracking
 #if DEBUG
         if ProcessInfo.processInfo.environment["AFTERMAP_NAVIGATION_PREVIEW"] == "1" {
@@ -768,6 +813,7 @@ final class WorldMapStore: ObservableObject {
         }
 #endif
         navigationVoiceEnabled = shouldTrackLiveLocation
+        navigationCameraFollowing = true
         prepareNavigation(route, affectedIncidentName: affectedIncidentName)
         navigationState = .awaitingLocation
         navigationCameraRevision += 1
@@ -790,6 +836,7 @@ final class WorldMapStore: ObservableObject {
         navigationIncidentVersions = [:]
         navigationOffRouteUpdates = 0
         navigationHeading = nil
+        navigationCameraFollowing = true
         navigationCameraRevision += 1
         navigationRenderRevision += 1
         if announce { speak("Navigation ended") }
@@ -809,14 +856,21 @@ final class WorldMapStore: ObservableObject {
     func retryNavigation() {
         guard case .blocked = navigationState, let location = lastUserLocation, destination != nil else { return }
         navigationState = .rerouting(nil)
+        navigationCameraFollowing = true
         navigationLocationDriver.start()
         navigationCameraRevision += 1
         Task { await rerouteFromCurrentLocation(location) }
     }
 
     func recenterNavigation() {
-        guard followsNavigationCamera else { return }
+        guard navigationState.keepsLocationTrackingActive else { return }
+        navigationCameraFollowing = true
         navigationCameraRevision += 1
+    }
+
+    func suspendNavigationCameraFollowing() {
+        guard navigationState.keepsLocationTrackingActive, navigationCameraFollowing else { return }
+        navigationCameraFollowing = false
     }
 
     private func prepareNavigation(_ route: IncidentRouteResponse, affectedIncidentName: String?) {
@@ -925,6 +979,7 @@ final class WorldMapStore: ObservableObject {
     private func rerouteFromCurrentLocation(_ location: CLLocation) async {
         origin = IncidentCoordinate(location.coordinate)
         originPlace = nil
+        originUsesCurrentLocation = true
         await previewRoute()
         guard case let .route(route, affectedIncidentName) = routeState,
               route.status == .complete,
@@ -1211,42 +1266,6 @@ final class WorldMapStore: ObservableObject {
     func focus(on coordinate: IncidentCoordinate, zoom: Double) {
         cameraRevision += 1
         cameraTarget = CameraTarget(coordinate: coordinate, zoom: zoom, revision: cameraRevision)
-    }
-}
-
-private enum NativePlaceSearch {
-    static func places(query: String, near reference: IncidentCoordinate?) async throws -> [PlaceResult] {
-        let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = query
-        request.resultTypes = [.address, .pointOfInterest]
-        if let reference {
-            request.region = MKCoordinateRegion(
-                center: CLLocationCoordinate2D(latitude: reference.latitude, longitude: reference.longitude),
-                latitudinalMeters: 80_000,
-                longitudinalMeters: 80_000
-            )
-        }
-
-        let response = try await MKLocalSearch(request: request).start()
-        return response.mapItems.enumerated().compactMap { index, item in
-            let coordinate = item.placemark.coordinate
-            guard CLLocationCoordinate2DIsValid(coordinate) else { return nil }
-            let name = item.name?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let resolvedName = (name?.isEmpty == false ? name : nil) ?? item.placemark.title ?? query
-            let detail = item.placemark.title.flatMap { title in
-                title == resolvedName ? nil : title
-            } ?? [item.placemark.locality, item.placemark.administrativeArea]
-                .compactMap { $0 }
-                .joined(separator: ", ")
-            let idSeed = "\(resolvedName)|\(coordinate.latitude)|\(coordinate.longitude)|\(index)"
-            return PlaceResult(
-                id: "apple-\(idSeed.hashValue)",
-                name: resolvedName,
-                detail: detail,
-                latitude: coordinate.latitude,
-                longitude: coordinate.longitude
-            )
-        }
     }
 }
 

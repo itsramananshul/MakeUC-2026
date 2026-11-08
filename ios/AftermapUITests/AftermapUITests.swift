@@ -129,6 +129,23 @@ final class AftermapUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Tap the map to choose your destination"].exists)
     }
 
+    func testRouteEndpointCanBeChosenDirectlyOnMap() {
+        let app = XCUIApplication()
+        app.launchEnvironment["AFTERMAP_AUTOMATIC_LOCATION"] = "0"
+        app.launch()
+
+        let origin = app.buttons["route.origin"]
+        XCTAssertTrue(origin.waitForExistence(timeout: 10))
+        origin.tap()
+        let chooseOnMap = app.buttons["route.endpoint.chooseOnMap"]
+        XCTAssertTrue(chooseOnMap.waitForExistence(timeout: 3))
+        chooseOnMap.tap()
+
+        XCTAssertTrue(app.staticTexts["Tap the map to choose your starting point"].waitForExistence(timeout: 5))
+        app.otherElements["world.map"].coordinate(withNormalizedOffset: CGVector(dx: 0.48, dy: 0.42)).tap()
+        XCTAssertFalse(app.staticTexts["Tap the map to choose your starting point"].exists)
+    }
+
     func testStartNavigationShowsLiveGuidanceControls() {
         let app = XCUIApplication()
         app.launchEnvironment["AFTERMAP_AUTOMATIC_LOCATION"] = "0"

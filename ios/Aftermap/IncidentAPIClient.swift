@@ -4,9 +4,12 @@ struct IncidentAPIClient {
     var baseURL: String
     var urlSession: URLSession = .shared
 
+    func world() async throws -> IncidentListResponse {
+        try await send(path: "api/incidents", method: "GET", body: Optional<String>.none)
+    }
+
     func incidents() async throws -> [Incident] {
-        let response: IncidentListResponse = try await send(path: "api/incidents", method: "GET", body: Optional<String>.none)
-        return response.incidents
+        try await world().incidents
     }
 
     func incident(id: String) async throws -> IncidentDetail {

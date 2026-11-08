@@ -98,7 +98,10 @@ struct Incident: Codable, Identifiable, Equatable {
     }
 }
 
-struct IncidentListResponse: Codable { var incidents: [Incident] }
+struct IncidentListResponse: Codable {
+    var incidents: [Incident]
+    var recoveryImagery: [IncidentImagery]? = nil
+}
 
 struct IncidentCreationRequest: Encodable {
     var name: String
@@ -246,6 +249,11 @@ struct IncidentDetail: Codable, Identifiable, Equatable {
     var roadCount: Int
     var roads: [IncidentRoad]
     var reports: [IncidentReport]
+
+    var publishedSurveys: [IncidentImagery] {
+        if let surveys { return surveys }
+        return imagery.map { [$0] } ?? []
+    }
 }
 
 struct PlaceResult: Codable, Identifiable, Equatable {

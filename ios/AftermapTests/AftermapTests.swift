@@ -512,7 +512,7 @@ final class AftermapTests: XCTestCase {
     }
 
     @MainActor
-    func testEndpointSearchUsesSharedCanonicalCatiaPlace() async throws {
+    func testEndpointSearchUsesSharedBackendCatiaPlace() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
         let session = URLSession(configuration: configuration)
@@ -520,7 +520,7 @@ final class AftermapTests: XCTestCase {
             let items = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
             let query = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
             XCTAssertEqual(query["q"], "Catia La Mar")
-            XCTAssertEqual(request.url?.path, "/api/places/exact")
+            XCTAssertEqual(request.url?.path, "/api/places")
             let data = #"{"places":[{"id":"canonical-ve-catia-la-mar","name":"Catia La Mar","detail":"Vargas, Venezuela","latitude":10.5992669,"longitude":-67.0145106}]}"#.data(using: .utf8)!
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
@@ -544,10 +544,6 @@ final class AftermapTests: XCTestCase {
         configuration.protocolClasses = [MockURLProtocol.self]
         let session = URLSession(configuration: configuration)
         MockURLProtocol.handler = { request in
-            if request.url?.path == "/api/places/exact" {
-                let data = #"{"places":[]}"#.data(using: .utf8)!
-                return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
-            }
             let items = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
             let query = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
             XCTAssertEqual(query["q"], "BMV")
@@ -596,7 +592,7 @@ final class AftermapTests: XCTestCase {
         let session = URLSession(configuration: configuration)
         MockURLProtocol.handler = { request in
             XCTAssertEqual(request.url?.path, "/api/incidents")
-            let data = #"{"incidents":[{"id":"surveyed","name":"Cincinnati Flood Exercise","kind":"incident","bounds":{"west":-84.6,"south":39.0,"east":-84.4,"north":39.2},"imagery":{"url":"/new.png","bounds":{"west":-84.6,"south":39.0,"east":-84.4,"north":39.2},"source":"simulated imagery","timestamp":"2026-11-08"},"surveys":[{"url":"/old.png","bounds":{"west":-84.6,"south":39.0,"east":-84.4,"north":39.2},"source":"survey","timestamp":"2026-11-07"},{"url":"/new.png","bounds":{"west":-84.6,"south":39.0,"east":-84.4,"north":39.2},"source":"survey","timestamp":"2026-11-08"}],"version":2,"roadCount":10}]}"#.data(using: .utf8)!
+            let data = #"{"incidents":[{"id":"surveyed","name":"Cincinnati Flood Exercise","kind":"incident","bounds":{"west":-84.6,"south":39.0,"east":-84.4,"north":39.2},"imagery":{"url":"/new.png","bounds":{"west":-84.6,"south":39.0,"east":-84.4,"north":39.2},"source":"simulated imagery","timestamp":"2026-11-08"},"surveys":[{"url":"/old.png","bounds":{"west":-84.6,"south":39.0,"east":-84.4,"north":39.2},"source":"survey","timestamp":"2026-11-07"},{"url":"/new.png","bounds":{"west":-84.6,"south":39.0,"east":-84.4,"north":39.2},"source":"survey","timestamp":"2026-11-08"}],"version":2,"roadCount":10}],"recoveryImagery":[{"url":"/recovery.png","bounds":{"west":-84.52,"south":39.09,"east":-84.50,"north":39.11},"source":"Recovery survey","timestamp":"2026-11-09","detailTiles":[{"url":"/recovery-detail.png","bounds":{"west":-84.51,"south":39.10,"east":-84.50,"north":39.11}}]}]}"#.data(using: .utf8)!
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
         let suite = "AFTERMAP.SurveyedIncident.\(UUID().uuidString)"
@@ -609,6 +605,8 @@ final class AftermapTests: XCTestCase {
 
         XCTAssertEqual(store.incidents.map(\.id), ["surveyed"])
         XCTAssertEqual(store.incidents.first?.publishedSurveys.count, 2)
+        XCTAssertEqual(store.recoveryImagery.map(\.url), ["/recovery.png"])
+        XCTAssertEqual(store.recoveryImagery.first?.detailTiles?.map(\.url), ["/recovery-detail.png"])
     }
 
     @MainActor
@@ -777,10 +775,55 @@ final class AftermapTests: XCTestCase {
         XCTAssertGreaterThan(progress.remainingDistance, 250)
         XCTAssertTrue(store.followsNavigationCamera)
 
+        store.suspendNavigationCameraFollowing()
+        XCTAssertFalse(store.followsNavigationCamera)
+        store.recenterNavigation()
+        XCTAssertTrue(store.followsNavigationCamera)
+
         store.acceptUserLocation(finish.coordinate)
         XCTAssertEqual(store.navigationState, .arrived)
         XCTAssertFalse(store.followsNavigationCamera)
         XCTAssertTrue(store.navigationRemainingCoordinates.isEmpty)
+    }
+
+    @MainActor
+    func testNavigationFromFarManualStartStaysAsRoutePreview() {
+        let suite = "AFTERMAP.ManualOrigin.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = WorldMapStore(defaults: defaults)
+        let selectedStart = IncidentCoordinate(latitude: 40.7128, longitude: -74.0060)
+        let finish = IncidentCoordinate(latitude: 40.7306, longitude: -73.9352)
+        let physicalLocation = IncidentCoordinate(latitude: 39.1031, longitude: -84.5120)
+        let route = IncidentRouteResponse(
+            status: .complete,
+            coordinates: [selectedStart, finish],
+            distanceMeters: 7_000,
+            reason: "Preview from the selected start",
+            startLabel: "Head east",
+            endLabel: "Arrive at your destination"
+        )
+        store.origin = selectedStart
+        store.destination = finish
+        store.acceptUserLocation(physicalLocation.coordinate)
+        store.installRouteForTesting(route)
+
+        XCTAssertTrue(store.requiresRoutePreview)
+        XCTAssertFalse(store.showsSurveyImageryOnMap)
+        store.showRoutePreview(route)
+        XCTAssertNil(store.notice)
+        XCTAssertEqual(store.navigationState, .idle)
+        XCTAssertEqual(store.origin, selectedStart)
+        XCTAssertNotNil(store.cameraTarget)
+
+        XCTAssertFalse(store.startNavigation(enableLiveTracking: false))
+        XCTAssertEqual(store.origin, selectedStart)
+        XCTAssertEqual(store.navigationState, .idle)
+        guard case let .route(preview, _) = store.routeState else {
+            return XCTFail("The selected-start route should remain visible as a preview")
+        }
+        XCTAssertEqual(preview.coordinates.first, selectedStart)
+        XCTAssertTrue(store.notice?.contains("not near that start") == true)
     }
 
     @MainActor

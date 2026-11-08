@@ -109,6 +109,17 @@ struct MapLibreWorldMap: UIViewRepresentable {
             refreshStyle()
         }
 
+        func mapView(
+            _ mapView: MLNMapView,
+            regionWillChangeWith reason: MLNCameraChangeReason,
+            animated: Bool
+        ) {
+            let gestureMask = (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5) | (1 << 6) | (1 << 7) | (1 << 8)
+            guard reason.rawValue & UInt(gestureMask) != 0 else { return }
+            store.suspendNavigationCameraFollowing()
+            mapView.userTrackingMode = .none
+        }
+
         func mapView(_ mapView: MLNMapView, didUpdate userLocation: MLNUserLocation?) {
             guard let location = userLocation?.location else { return }
             store.acceptUserLocation(location)
@@ -183,6 +194,12 @@ struct MapLibreWorldMap: UIViewRepresentable {
                 }.joined(separator: ";")
                 return "\(incident.id):\(incident.version):\(surveys)"
             }.joined(separator: "|")
+            let recovery = store.recoveryImagery.map { imagery in
+                let detailTiles = imagery.detailTiles?.map {
+                    "\($0.url):\($0.bounds.west),\($0.bounds.south),\($0.bounds.east),\($0.bounds.north)"
+                }.joined(separator: ",") ?? "-"
+                return "\(imagery.timestamp):\(imagery.url):\(detailTiles)"
+            }.joined(separator: ";")
             let detail = store.incidentDetail.map { "\($0.id):\($0.version):\($0.roads.count)" } ?? "-"
             let selectedRoad = store.selectedRoad?.id ?? "-"
             let origin = store.origin.map { "\($0.latitude),\($0.longitude)" } ?? "-"
@@ -207,7 +224,7 @@ struct MapLibreWorldMap: UIViewRepresentable {
             case .arrived: "arrived"
             }
             let navigation = "\(navigationState):\(store.navigationRenderRevision)"
-            return [store.mapStyle.rawValue, incidentVersions, detail, selectedRoad, origin, destination, reportLocation, incidentDraftCenter, route, navigation]
+            return [store.mapStyle.rawValue, incidentVersions, recovery, detail, selectedRoad, origin, destination, reportLocation, incidentDraftCenter, route, navigation]
                 .joined(separator: "#")
         }
 
@@ -251,33 +268,44 @@ struct MapLibreWorldMap: UIViewRepresentable {
         }
 
         private func addImagery(to style: MLNStyle) {
+            // Route preview and turn-by-turn guidance need an unobstructed map.
+            // Incident rasters remain available while inspecting incidents, but
+            // never cover streets, labels, or the route during navigation.
+            guard store.showsSurveyImageryOnMap else { return }
             for (index, incident) in store.incidents.enumerated() {
                 let surveys = incident.publishedSurveys.sorted { $0.timestamp < $1.timestamp }
                 for (surveyIndex, imagery) in surveys.enumerated() {
-                    guard let url = store.client.resolvedURL(imagery.url) else { continue }
-                    addImageryLayer(
-                        to: style,
-                        sourceID: "aftermap-image-source-\(index)-\(surveyIndex)",
-                        layerID: "aftermap-image-layer-\(index)-\(surveyIndex)",
-                        url: url,
-                        bounds: imagery.bounds,
-                        opacity: 1,
-                        minimumZoom: 0
-                    )
-
-                    for (tileIndex, tile) in (imagery.detailTiles ?? []).enumerated() {
-                        guard let tileURL = store.client.resolvedURL(tile.url) else { continue }
-                        addImageryLayer(
-                            to: style,
-                            sourceID: "aftermap-image-detail-source-\(index)-\(surveyIndex)-\(tileIndex)",
-                            layerID: "aftermap-image-detail-layer-\(index)-\(surveyIndex)-\(tileIndex)",
-                            url: tileURL,
-                            bounds: tile.bounds,
-                            opacity: 1,
-                            minimumZoom: 15
-                        )
-                    }
+                    addSurvey(imagery, namespace: "incident-\(index)-\(surveyIndex)", to: style)
                 }
+            }
+            for (index, imagery) in store.recoveryImagery.sorted(by: { $0.timestamp < $1.timestamp }).enumerated() {
+                addSurvey(imagery, namespace: "recovery-\(index)", to: style)
+            }
+        }
+
+        private func addSurvey(_ imagery: IncidentImagery, namespace: String, to style: MLNStyle) {
+            if let url = store.client.resolvedURL(imagery.url) {
+                addImageryLayer(
+                    to: style,
+                    sourceID: "aftermap-image-source-\(namespace)",
+                    layerID: "aftermap-image-layer-\(namespace)",
+                    url: url,
+                    bounds: imagery.bounds,
+                    opacity: 1,
+                    minimumZoom: 9
+                )
+            }
+            for (tileIndex, tile) in (imagery.detailTiles ?? []).enumerated() {
+                guard let tileURL = store.client.resolvedURL(tile.url) else { continue }
+                addImageryLayer(
+                    to: style,
+                    sourceID: "aftermap-image-detail-source-\(namespace)-\(tileIndex)",
+                    layerID: "aftermap-image-detail-layer-\(namespace)-\(tileIndex)",
+                    url: tileURL,
+                    bounds: tile.bounds,
+                    opacity: 1,
+                    minimumZoom: 16
+                )
             }
         }
 
@@ -300,6 +328,7 @@ struct MapLibreWorldMap: UIViewRepresentable {
             style.addSource(source)
             let layer = MLNRasterStyleLayer(identifier: layerID, source: source)
             layer.rasterOpacity = NSExpression(forConstantValue: opacity)
+            layer.rasterFadeDuration = NSExpression(forConstantValue: 0)
             layer.minimumZoomLevel = minimumZoom
             layer.maximumZoomLevel = 24
             if let firstLabel = style.layers.first(where: { $0 is MLNSymbolStyleLayer }) {

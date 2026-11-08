@@ -239,23 +239,21 @@ struct RootView: View {
                     }
                 }
                 Spacer()
-                if store.followsNavigationCamera {
-                    Button { store.recenterNavigation() } label: {
-                        Image(systemName: "location.north.fill")
-                    }
-                    .buttonStyle(.bordered)
-                    .buttonBorderShape(.circle)
-                    .accessibilityLabel("Recenter navigation")
-                    .accessibilityIdentifier("navigation.recenter")
-                    Button { store.stopNavigation() } label: {
-                        Image(systemName: "xmark")
-                    }
-                    .buttonStyle(.bordered)
-                    .buttonBorderShape(.circle)
-                    .tint(.red)
-                    .accessibilityLabel("End navigation")
-                    .accessibilityIdentifier("navigation.end")
+                Button { store.recenterNavigation() } label: {
+                    Image(systemName: store.followsNavigationCamera ? "location.north.fill" : "location.north")
                 }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.circle)
+                .accessibilityLabel("Recenter navigation")
+                .accessibilityIdentifier("navigation.recenter")
+                Button { store.stopNavigation() } label: {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.circle)
+                .tint(.red)
+                .accessibilityLabel("End navigation")
+                .accessibilityIdentifier("navigation.end")
             }
 
             switch store.navigationState {
@@ -378,7 +376,12 @@ struct RootView: View {
                 }
             }
             .sheet(item: $endpointEditor) { endpoint in
-                RouteEndpointSearchSheet(store: store, endpoint: endpoint)
+                RouteEndpointSearchSheet(store: store, endpoint: endpoint) {
+                    store.setSelectionMode(endpoint == .origin ? .origin : .destination)
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                        dashboardDetent = Self.compactDashboardDetent
+                    }
+                }
             }
             .alert("Gaslight Maps", isPresented: Binding(
                 get: { store.notice != nil },
@@ -786,7 +789,8 @@ struct RootView: View {
     }
 
     private func routeOptionCard(_ route: IncidentRouteResponse, index: Int) -> some View {
-        HStack(spacing: 14) {
+        let previewsOnly = store.requiresRoutePreview
+        return HStack(spacing: 14) {
             Button {
                 store.selectRouteAlternative(route)
             } label: {
@@ -806,9 +810,14 @@ struct RootView: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("route.alternative.\(index)")
 
-            Button("GO") {
+            Button(previewsOnly ? "PREVIEW" : "GO") {
                 store.selectRouteAlternative(route)
-                if store.startNavigation() {
+                if previewsOnly {
+                    store.showRoutePreview(route)
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                        dashboardDetent = Self.compactDashboardDetent
+                    }
+                } else if store.startNavigation() {
                     withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
                         dashboardDetent = Self.compactDashboardDetent
                     }
@@ -817,10 +826,12 @@ struct RootView: View {
             .font(.title3.weight(.bold))
             .buttonStyle(.borderedProminent)
             .buttonBorderShape(.roundedRectangle(radius: 15))
-            .tint(.green)
+            .tint(previewsOnly ? .blue : .green)
             .controlSize(.large)
             .disabled(route.status != .complete || route.hasUnverifiedSegments)
-            .accessibilityIdentifier(index == 0 ? "navigation.start" : "route.go.\(index)")
+            .accessibilityIdentifier(index == 0
+                ? (previewsOnly ? "route.previewSelected" : "navigation.start")
+                : "route.go.\(index)")
         }
         .padding(16)
         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20))
@@ -844,6 +855,11 @@ struct RootView: View {
             Button {
                 if store.showsNavigationUI {
                     store.stopNavigation()
+                } else if store.requiresRoutePreview {
+                    store.showRoutePreview(response)
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                        dashboardDetent = Self.compactDashboardDetent
+                    }
                 } else if store.startNavigation() {
                     withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
                         dashboardDetent = Self.compactDashboardDetent
@@ -853,18 +869,26 @@ struct RootView: View {
                 Label(
                     store.showsNavigationUI
                         ? "End Navigation"
-                        : (response.hasUnverifiedSegments ? "Verify Route to Navigate" : "Start Navigation"),
+                        : (response.hasUnverifiedSegments
+                            ? "Verify Route to Navigate"
+                            : (store.requiresRoutePreview ? "Preview Route" : "Start Navigation")),
                     systemImage: store.showsNavigationUI
                         ? "xmark.circle.fill"
-                        : (response.hasUnverifiedSegments ? "exclamationmark.shield.fill" : "location.north.circle.fill")
+                        : (response.hasUnverifiedSegments
+                            ? "exclamationmark.shield.fill"
+                            : (store.requiresRoutePreview ? "map.fill" : "location.north.circle.fill"))
                 )
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .tint(store.showsNavigationUI ? .red : (response.hasUnverifiedSegments ? .orange : .green))
+            .tint(store.showsNavigationUI
+                ? .red
+                : (response.hasUnverifiedSegments ? .orange : (store.requiresRoutePreview ? .blue : .green)))
             .controlSize(.large)
             .disabled(!store.showsNavigationUI && !store.canStartNavigation)
-            .accessibilityIdentifier(store.showsNavigationUI ? "navigation.end" : "navigation.start")
+            .accessibilityIdentifier(store.showsNavigationUI
+                ? "navigation.end"
+                : (store.requiresRoutePreview ? "route.previewSelected" : "navigation.start"))
         }
     }
 
@@ -1044,6 +1068,7 @@ struct RootView: View {
 private struct RouteEndpointSearchSheet: View {
     @ObservedObject var store: WorldMapStore
     let endpoint: RouteEndpointEditor
+    let onChooseMap: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
@@ -1094,6 +1119,14 @@ private struct RouteEndpointSearchSheet: View {
                         }
                         .accessibilityIdentifier("route.endpoint.myLocation")
                     }
+
+                    Button {
+                        dismiss()
+                        onChooseMap()
+                    } label: {
+                        Label("Choose on Map", systemImage: "mappin.and.ellipse")
+                    }
+                    .accessibilityIdentifier("route.endpoint.chooseOnMap")
 
                     ForEach(results) { place in
                         Button { choose(place) } label: {
@@ -1525,16 +1558,24 @@ private struct IncidentSheet: View {
                         Section {
                             LabeledContent("Roads", value: "\(detail.roadCount)")
                             LabeledContent("Reports", value: "\(detail.reports.count)")
-                            if let imagery = detail.imagery {
-                                LabeledContent("Aerial survey", value: imagery.source)
-                                LabeledContent("Captured", value: imagery.timestamp)
+                            if !detail.publishedSurveys.isEmpty {
+                                ForEach(Array(detail.publishedSurveys.enumerated()), id: \.offset) { index, imagery in
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text("Aerial survey \(index + 1)")
+                                            .font(.subheadline.weight(.semibold))
+                                        Text(imagery.source)
+                                        Text(imagery.timestamp)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
                                 Button(role: .destructive) {
                                     showingSurveyRemovalConfirmation = true
                                 } label: {
                                     if removingSurvey {
-                                        Label("Removing aerial survey…", systemImage: "trash")
+                                        Label("Removing aerial surveys…", systemImage: "trash")
                                     } else {
-                                        Label("Remove aerial survey", systemImage: "trash")
+                                        Label("Remove published surveys", systemImage: "trash")
                                     }
                                 }
                                 .disabled(removingSurvey || uploadingSurvey)
