@@ -51,6 +51,25 @@ struct MapLibreWorldMap: UIViewRepresentable {
             map.showsUserLocation = true
             map.userTrackingMode = .follow
         }
+        if store.followsNavigationCamera {
+            map.showsUserLocation = true
+            map.userTrackingMode = .followWithCourse
+            if context.coordinator.lastNavigationCameraRevision != store.navigationCameraRevision {
+                context.coordinator.lastNavigationCameraRevision = store.navigationCameraRevision
+                if let coordinate = store.userCoordinate?.coordinate {
+                    map.setCenter(
+                        coordinate,
+                        zoomLevel: max(16, map.zoomLevel),
+                        direction: store.navigationHeading ?? map.direction,
+                        animated: true
+                    )
+                }
+            }
+            context.coordinator.wasFollowingNavigation = true
+        } else if context.coordinator.wasFollowingNavigation {
+            map.userTrackingMode = .none
+            context.coordinator.wasFollowingNavigation = false
+        }
         if let target = store.cameraTarget, context.coordinator.lastCameraRevision != target.revision {
             context.coordinator.lastCameraRevision = target.revision
             map.setCenter(target.coordinate.coordinate, zoomLevel: target.zoom, animated: true)
@@ -63,6 +82,8 @@ struct MapLibreWorldMap: UIViewRepresentable {
         weak var mapView: MLNMapView?
         var lastCameraRevision = -1
         var lastLocationRequestRevision = 0
+        var lastNavigationCameraRevision = -1
+        var wasFollowingNavigation = false
         private var isStyleReady = false
         private var renderedSignature = ""
         private var baseStyleURL: URL
@@ -89,8 +110,8 @@ struct MapLibreWorldMap: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MLNMapView, didUpdate userLocation: MLNUserLocation?) {
-            guard let coordinate = userLocation?.location?.coordinate else { return }
-            store.acceptUserLocation(coordinate)
+            guard let location = userLocation?.location else { return }
+            store.acceptUserLocation(location)
         }
 
         func mapView(_ mapView: MLNMapView, didFailToLocateUserWithError error: Error) {
@@ -153,7 +174,12 @@ struct MapLibreWorldMap: UIViewRepresentable {
         }
 
         private var styleSignature: String {
-            let incidentVersions = store.incidents.map { "\($0.id):\($0.version):\($0.imagery?.url ?? "-")" }.joined(separator: "|")
+            let incidentVersions = store.incidents.map { incident in
+                let imagery = incident.imagery
+                let detailTiles = imagery?.detailTiles?.map { "\($0.url):\($0.bounds.west),\($0.bounds.south),\($0.bounds.east),\($0.bounds.north)" }
+                    .joined(separator: ",") ?? "-"
+                return "\(incident.id):\(incident.version):\(imagery?.url ?? "-"):\(detailTiles)"
+            }.joined(separator: "|")
             let detail = store.incidentDetail.map { "\($0.id):\($0.version):\($0.roads.count)" } ?? "-"
             let selectedRoad = store.selectedRoad?.id ?? "-"
             let origin = store.origin.map { "\($0.latitude),\($0.longitude)" } ?? "-"
@@ -166,9 +192,19 @@ struct MapLibreWorldMap: UIViewRepresentable {
             case .calculating: route = "calculating"
             case let .unavailable(reason): route = "unavailable:\(reason)"
             case let .route(response, affected):
-                route = "\(response.status.rawValue):\(response.coordinates.count):\(response.distanceMeters):\(affected ?? "-")"
+                let unverified = response.unverifiedSegments?.map(String.init).joined(separator: ",") ?? "-"
+                route = "\(response.status.rawValue):\(response.coordinates.count):\(response.distanceMeters):\(unverified):\(affected ?? "-")"
             }
-            return [store.mapStyle.rawValue, incidentVersions, detail, selectedRoad, origin, destination, reportLocation, incidentDraftCenter, route]
+            let navigationState: String = switch store.navigationState {
+            case .idle: "idle"
+            case .awaitingLocation: "awaiting"
+            case .navigating: "navigating"
+            case .rerouting: "rerouting"
+            case .blocked: "blocked"
+            case .arrived: "arrived"
+            }
+            let navigation = "\(navigationState):\(store.navigationRenderRevision)"
+            return [store.mapStyle.rawValue, incidentVersions, detail, selectedRoad, origin, destination, reportLocation, incidentDraftCenter, route, navigation]
                 .joined(separator: "#")
         }
 
@@ -214,23 +250,56 @@ struct MapLibreWorldMap: UIViewRepresentable {
         private func addImagery(to style: MLNStyle) {
             for (index, incident) in store.incidents.enumerated() {
                 guard let imagery = incident.imagery, let url = store.client.resolvedURL(imagery.url) else { continue }
-                let bounds = imagery.bounds
-                let quad = MLNCoordinateQuad(
-                    topLeft: CLLocationCoordinate2D(latitude: bounds.north, longitude: bounds.west),
-                    bottomLeft: CLLocationCoordinate2D(latitude: bounds.south, longitude: bounds.west),
-                    bottomRight: CLLocationCoordinate2D(latitude: bounds.south, longitude: bounds.east),
-                    topRight: CLLocationCoordinate2D(latitude: bounds.north, longitude: bounds.east)
+                addImageryLayer(
+                    to: style,
+                    sourceID: "aftermap-image-source-\(index)",
+                    layerID: "aftermap-image-layer-\(index)",
+                    url: url,
+                    bounds: imagery.bounds,
+                    opacity: 0.72,
+                    minimumZoom: 0
                 )
-                let source = MLNImageSource(identifier: "aftermap-image-source-\(index)", coordinateQuad: quad, url: url)
-                style.addSource(source)
-                let layer = MLNRasterStyleLayer(identifier: "aftermap-image-layer-\(index)", source: source)
-                layer.rasterOpacity = NSExpression(forConstantValue: 0.72)
-                layer.maximumZoomLevel = 22
-                if let firstLabel = style.layers.first(where: { $0 is MLNSymbolStyleLayer }) {
-                    style.insertLayer(layer, below: firstLabel)
-                } else {
-                    style.addLayer(layer)
+
+                for (tileIndex, tile) in (imagery.detailTiles ?? []).enumerated() {
+                    guard let tileURL = store.client.resolvedURL(tile.url) else { continue }
+                    addImageryLayer(
+                        to: style,
+                        sourceID: "aftermap-image-detail-source-\(index)-\(tileIndex)",
+                        layerID: "aftermap-image-detail-layer-\(index)-\(tileIndex)",
+                        url: tileURL,
+                        bounds: tile.bounds,
+                        opacity: 1,
+                        minimumZoom: 15
+                    )
                 }
+            }
+        }
+
+        private func addImageryLayer(
+            to style: MLNStyle,
+            sourceID: String,
+            layerID: String,
+            url: URL,
+            bounds: IncidentBounds,
+            opacity: Double,
+            minimumZoom: Float
+        ) {
+            let quad = MLNCoordinateQuad(
+                topLeft: CLLocationCoordinate2D(latitude: bounds.north, longitude: bounds.west),
+                bottomLeft: CLLocationCoordinate2D(latitude: bounds.south, longitude: bounds.west),
+                bottomRight: CLLocationCoordinate2D(latitude: bounds.south, longitude: bounds.east),
+                topRight: CLLocationCoordinate2D(latitude: bounds.north, longitude: bounds.east)
+            )
+            let source = MLNImageSource(identifier: sourceID, coordinateQuad: quad, url: url)
+            style.addSource(source)
+            let layer = MLNRasterStyleLayer(identifier: layerID, source: source)
+            layer.rasterOpacity = NSExpression(forConstantValue: opacity)
+            layer.minimumZoomLevel = minimumZoom
+            layer.maximumZoomLevel = 24
+            if let firstLabel = style.layers.first(where: { $0 is MLNSymbolStyleLayer }) {
+                style.insertLayer(layer, below: firstLabel)
+            } else {
+                style.addLayer(layer)
             }
         }
 
@@ -312,7 +381,12 @@ struct MapLibreWorldMap: UIViewRepresentable {
 
         private func addRoute(to style: MLNStyle) {
             guard case let .route(response, _) = store.routeState, response.coordinates.count > 1 else { return }
-            var coordinates = response.coordinates.map(\.coordinate)
+            if case .arrived = store.navigationState { return }
+            let routeCoordinates = store.showsNavigationUI
+                ? store.navigationRemainingCoordinates
+                : response.coordinates
+            guard routeCoordinates.count > 1 else { return }
+            var coordinates = routeCoordinates.map(\.coordinate)
             let lineShape = MLNPolyline(coordinates: &coordinates, count: UInt(coordinates.count))
             let source = MLNShapeSource(identifier: "aftermap-route-source", shape: lineShape, options: nil)
             style.addSource(source)
@@ -320,10 +394,51 @@ struct MapLibreWorldMap: UIViewRepresentable {
             casing.lineColor = NSExpression(forConstantValue: UIColor.white)
             casing.lineWidth = NSExpression(forConstantValue: 9)
             style.addLayer(casing)
-            let line = MLNLineStyleLayer(identifier: "aftermap-route-line", source: source)
-            line.lineColor = NSExpression(forConstantValue: response.status == .complete ? UIColor.systemBlue : UIColor.systemOrange)
-            line.lineWidth = NSExpression(forConstantValue: 6)
-            style.addLayer(line)
+
+            let unverifiedIndices = store.showsNavigationUI
+                ? Set<Int>()
+                : Set((response.unverifiedSegments ?? []).filter { routeCoordinates.indices.dropLast().contains($0) })
+            guard !unverifiedIndices.isEmpty else {
+                let line = MLNLineStyleLayer(identifier: "aftermap-route-line", source: source)
+                line.lineColor = NSExpression(forConstantValue: response.status == .complete ? UIColor.systemBlue : UIColor.systemOrange)
+                line.lineWidth = NSExpression(forConstantValue: 6)
+                style.addLayer(line)
+                return
+            }
+
+            let verifiedSegments: [MLNPolyline] = routeCoordinates.indices.dropLast().compactMap { index in
+                guard !unverifiedIndices.contains(index) else { return nil }
+                var segment = [routeCoordinates[index].coordinate, routeCoordinates[index + 1].coordinate]
+                return MLNPolyline(coordinates: &segment, count: UInt(segment.count))
+            }
+            if !verifiedSegments.isEmpty {
+                let verifiedSource = MLNShapeSource(
+                    identifier: "aftermap-route-verified-source",
+                    shape: MLNShapeCollection(shapes: verifiedSegments),
+                    options: nil
+                )
+                style.addSource(verifiedSource)
+                let verifiedLine = MLNLineStyleLayer(identifier: "aftermap-route-verified-line", source: verifiedSource)
+                verifiedLine.lineColor = NSExpression(forConstantValue: UIColor.systemBlue)
+                verifiedLine.lineWidth = NSExpression(forConstantValue: 6)
+                style.addLayer(verifiedLine)
+            }
+
+            let unverifiedSegments: [MLNPolyline] = unverifiedIndices.sorted().map { index in
+                var segment = [routeCoordinates[index].coordinate, routeCoordinates[index + 1].coordinate]
+                return MLNPolyline(coordinates: &segment, count: UInt(segment.count))
+            }
+            let unverifiedSource = MLNShapeSource(
+                identifier: "aftermap-route-unverified-source",
+                shape: MLNShapeCollection(shapes: unverifiedSegments),
+                options: nil
+            )
+            style.addSource(unverifiedSource)
+            let unverifiedLine = MLNLineStyleLayer(identifier: "aftermap-route-unverified-line", source: unverifiedSource)
+            unverifiedLine.lineColor = NSExpression(forConstantValue: UIColor.systemOrange)
+            unverifiedLine.lineWidth = NSExpression(forConstantValue: 6)
+            unverifiedLine.lineDashPattern = NSExpression(forConstantValue: [1.4, 1.4])
+            style.addLayer(unverifiedLine)
         }
 
         private func addEndpoints(to style: MLNStyle) {

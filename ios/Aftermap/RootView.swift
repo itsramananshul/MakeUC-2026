@@ -33,7 +33,9 @@ struct RootView: View {
                 .accessibilityIdentifier("world.map")
 
             VStack(spacing: 10) {
-                if let mode = store.selectionMode {
+                if store.showsNavigationUI {
+                    navigationBanner
+                } else if let mode = store.selectionMode {
                     selectionBanner(mode)
                 } else if case let .stale(message) = store.connection {
                     staleBanner(message)
@@ -208,6 +210,131 @@ struct RootView: View {
         .padding(12)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
         .accessibilityIdentifier("map.selectionInstruction")
+    }
+
+    private var navigationBanner: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: navigationManeuverIcon)
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 42, height: 42)
+                    .background(.blue, in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(navigationHeadline)
+                        .font(.headline)
+                        .lineLimit(2)
+                    if let progress = store.navigationState.progress {
+                        Text(navigationDistanceText(progress.distanceToManeuver))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                if store.followsNavigationCamera {
+                    Button { store.recenterNavigation() } label: {
+                        Image(systemName: "location.north.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.circle)
+                    .accessibilityLabel("Recenter navigation")
+                    .accessibilityIdentifier("navigation.recenter")
+                    Button { store.stopNavigation() } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.circle)
+                    .tint(.red)
+                    .accessibilityLabel("End navigation")
+                    .accessibilityIdentifier("navigation.end")
+                }
+            }
+
+            switch store.navigationState {
+            case .idle:
+                EmptyView()
+            case .awaitingLocation:
+                Label("Finding your live location…", systemImage: "location.circle")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            case let .navigating(progress):
+                VStack(alignment: .leading, spacing: 5) {
+                    if let next = progress.nextInstruction {
+                        Text("Then: \(next)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(navigationRemainingText(progress))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            case let .rerouting(progress):
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Checking every alternative against live incident evidence…")
+                        .font(.caption)
+                }
+                if let progress {
+                    Text(navigationRemainingText(progress))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            case let .blocked(reason):
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(reason, systemImage: "exclamationmark.shield.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.red)
+                    HStack {
+                        Button("Retry Safe Route") { store.retryNavigation() }
+                            .buttonStyle(.borderedProminent)
+                        Button("End") { store.stopNavigation(announce: false) }
+                            .buttonStyle(.bordered)
+                    }
+                }
+            case .arrived:
+                Button("Done") { store.stopNavigation(announce: false) }
+                    .buttonStyle(.borderedProminent)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+        .padding(14)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+        .shadow(color: .black.opacity(0.18), radius: 14, y: 6)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("navigation.banner")
+    }
+
+    private var navigationHeadline: String {
+        switch store.navigationState {
+        case .idle: "Navigation"
+        case .awaitingLocation: "Starting navigation"
+        case let .navigating(progress): progress.currentInstruction
+        case .rerouting: "Rerouting safely"
+        case .blocked: "Navigation paused"
+        case .arrived: "You’ve arrived"
+        }
+    }
+
+    private var navigationManeuverIcon: String {
+        let instruction = store.navigationState.progress?.currentInstruction.lowercased() ?? ""
+        if instruction.contains("arriv") { return "mappin.and.ellipse" }
+        if instruction.contains("u-turn") { return "arrow.uturn.backward" }
+        if instruction.contains("left") { return "arrow.turn.up.left" }
+        if instruction.contains("right") { return "arrow.turn.up.right" }
+        if case .rerouting = store.navigationState { return "arrow.triangle.2.circlepath" }
+        if case .blocked = store.navigationState { return "exclamationmark.shield.fill" }
+        return "arrow.up"
+    }
+
+    private func navigationDistanceText(_ meters: Double) -> String {
+        Measurement(value: max(0, meters), unit: UnitLength.meters)
+            .formatted(.measurement(width: .abbreviated, usage: .road))
+    }
+
+    private func navigationRemainingText(_ progress: NavigationProgress) -> String {
+        let distance = navigationDistanceText(progress.remainingDistance)
+        let duration = progress.remainingTime.map { Duration.seconds($0).formatted(.units(width: .abbreviated)) }
+        return [distance, duration].compactMap { $0 }.joined(separator: " • ") + " remaining"
     }
 
     private func staleBanner(_ message: String) -> some View {
@@ -492,6 +619,36 @@ struct RootView: View {
             }
 
             routeStatus
+            navigationStartControl
+        }
+    }
+
+    @ViewBuilder private var navigationStartControl: some View {
+        if case let .route(response, _) = store.routeState, response.status == .complete {
+            Button {
+                if store.showsNavigationUI {
+                    store.stopNavigation()
+                } else if store.startNavigation() {
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                        dashboardDetent = Self.compactDashboardDetent
+                    }
+                }
+            } label: {
+                Label(
+                    store.showsNavigationUI
+                        ? "End Navigation"
+                        : (response.hasUnverifiedSegments ? "Verify Route to Navigate" : "Start Navigation"),
+                    systemImage: store.showsNavigationUI
+                        ? "xmark.circle.fill"
+                        : (response.hasUnverifiedSegments ? "exclamationmark.shield.fill" : "location.north.circle.fill")
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(store.showsNavigationUI ? .red : (response.hasUnverifiedSegments ? .orange : .green))
+            .controlSize(.large)
+            .disabled(!store.showsNavigationUI && !store.canStartNavigation)
+            .accessibilityIdentifier(store.showsNavigationUI ? "navigation.end" : "navigation.start")
         }
     }
 
@@ -608,10 +765,24 @@ struct RootView: View {
                 .accessibilityIdentifier("route.unavailable")
         case let .route(response, affected):
             VStack(alignment: .leading, spacing: 3) {
-                Label(routeStatusTitle(response), systemImage: response.status == .complete ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+                Label(
+                    routeStatusTitle(response),
+                    systemImage: response.status == .complete && !response.hasUnverifiedSegments
+                        ? "checkmark.shield.fill"
+                        : "exclamationmark.shield.fill"
+                )
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(response.status == .complete ? AftermapTheme.mint : AftermapTheme.amber)
+                    .foregroundStyle(
+                        response.status == .complete && !response.hasUnverifiedSegments
+                            ? AftermapTheme.mint
+                            : AftermapTheme.amber
+                    )
                 if let affected { Text("Checked against \(affected)").font(.caption2).foregroundStyle(.secondary) }
+                if response.hasUnverifiedSegments {
+                    Text("Dashed street segments do not have current confirmation. Live navigation is disabled until every segment is verified.")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(AftermapTheme.amber)
+                }
                 if !response.reason.isEmpty { Text(response.reason).font(.caption2).foregroundStyle(.secondary) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -631,6 +802,10 @@ struct RootView: View {
         let formatted = distance.formatted(.measurement(width: .abbreviated, usage: .road))
         let duration = response.expectedTravelTime.map { Duration.seconds($0).formatted(.units(width: .abbreviated)) }
         let summary = [formatted, duration].compactMap { $0 }.joined(separator: " • ")
+        if response.hasUnverifiedSegments {
+            let count = response.unverifiedSegments?.count ?? 0
+            return "Route has \(count) unverified segment\(count == 1 ? "" : "s") • \(summary)"
+        }
         return switch response.status {
         case .complete: "Evidence-aware route • \(summary)"
         case .partial: "Partial route only • \(summary)"
@@ -1117,6 +1292,8 @@ private struct IncidentSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showingSurveyImporter = false
     @State private var uploadingSurvey = false
+    @State private var showingSurveyRemovalConfirmation = false
+    @State private var removingSurvey = false
     @State private var importingRoads = false
 
     var body: some View {
@@ -1130,6 +1307,17 @@ private struct IncidentSheet: View {
                             if let imagery = detail.imagery {
                                 LabeledContent("Aerial survey", value: imagery.source)
                                 LabeledContent("Captured", value: imagery.timestamp)
+                                Button(role: .destructive) {
+                                    showingSurveyRemovalConfirmation = true
+                                } label: {
+                                    if removingSurvey {
+                                        Label("Removing aerial survey…", systemImage: "trash")
+                                    } else {
+                                        Label("Remove aerial survey", systemImage: "trash")
+                                    }
+                                }
+                                .disabled(removingSurvey || uploadingSurvey)
+                                .accessibilityIdentifier("incident.removeSurvey")
                             } else {
                                 Label("No aerial survey published", systemImage: "photo.badge.exclamationmark")
                                     .foregroundStyle(.secondary)
@@ -1230,6 +1418,22 @@ private struct IncidentSheet: View {
                 }
                 uploadingSurvey = false
             }
+        }
+        .confirmationDialog(
+            "Remove this aerial survey?",
+            isPresented: $showingSurveyRemovalConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Remove Aerial Survey", role: .destructive) {
+                removingSurvey = true
+                Task {
+                    _ = await store.removeIncidentImagery()
+                    removingSurvey = false
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The uploaded survey layer will be removed. Roads, labels, reports, and the base map will stay available.")
         }
     }
 

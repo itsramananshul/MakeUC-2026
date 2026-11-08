@@ -108,6 +108,31 @@ final class AftermapTests: XCTestCase {
         XCTAssertTrue(response.incidents.isEmpty)
     }
 
+    func testRouteResponseDecodesOptionalUnverifiedSegmentsBackwardCompatibly() throws {
+        let legacy = #"{"status":"complete","coordinates":[{"latitude":1,"longitude":2},{"latitude":3,"longitude":4}],"distanceMeters":100,"reason":"Legacy route"}"#.data(using: .utf8)!
+        let current = #"{"status":"complete","coordinates":[{"latitude":1,"longitude":2},{"latitude":2,"longitude":3},{"latitude":3,"longitude":4}],"distanceMeters":100,"reason":"Needs confirmation","unverifiedSegments":[1]}"#.data(using: .utf8)!
+
+        let legacyRoute = try JSONDecoder().decode(IncidentRouteResponse.self, from: legacy)
+        let currentRoute = try JSONDecoder().decode(IncidentRouteResponse.self, from: current)
+
+        XCTAssertNil(legacyRoute.unverifiedSegments)
+        XCTAssertFalse(legacyRoute.hasUnverifiedSegments)
+        XCTAssertEqual(currentRoute.unverifiedSegments, [1])
+        XCTAssertTrue(currentRoute.hasUnverifiedSegments)
+    }
+
+    func testIncidentImageryDecodesOrderedDetailTilesBackwardCompatibly() throws {
+        let legacy = #"{"url":"/api/imagery/overview","bounds":{"west":-84.52,"south":39.10,"east":-84.51,"north":39.11},"source":"Uploaded GeoTIFF","timestamp":"2026-11-07T22:00:00Z"}"#.data(using: .utf8)!
+        let current = #"{"url":"/api/imagery/overview","bounds":{"west":-84.52,"south":39.10,"east":-84.51,"north":39.11},"source":"Uploaded GeoTIFF","timestamp":"2026-11-07T22:00:00Z","detailTiles":[{"url":"/api/imagery/detail-1","bounds":{"west":-84.520,"south":39.100,"east":-84.515,"north":39.105}},{"url":"/api/imagery/detail-2","bounds":{"west":-84.515,"south":39.105,"east":-84.510,"north":39.110}}]}"#.data(using: .utf8)!
+
+        let legacyImagery = try JSONDecoder().decode(IncidentImagery.self, from: legacy)
+        let currentImagery = try JSONDecoder().decode(IncidentImagery.self, from: current)
+
+        XCTAssertNil(legacyImagery.detailTiles)
+        XCTAssertEqual(currentImagery.detailTiles?.map(\.url), ["/api/imagery/detail-1", "/api/imagery/detail-2"])
+        XCTAssertEqual(currentImagery.detailTiles?.last?.bounds.east, -84.510)
+    }
+
     func testMapStyleFollowsSystemAppearance() {
         XCTAssertEqual(MapLibreWorldMap.styleURL(for: .light).lastPathComponent, "liberty")
         XCTAssertEqual(MapLibreWorldMap.styleURL(for: .dark).lastPathComponent, "fiord")
@@ -238,6 +263,25 @@ final class AftermapTests: XCTestCase {
 
         XCTAssertEqual(detail.imagery?.source, "Uploaded GeoTIFF")
         XCTAssertEqual(detail.version, 2)
+    }
+
+    func testAerialSurveyRemovalUsesAuthorizedDeleteContract() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/incidents/flood-1/imagery")
+            XCTAssertEqual(request.httpMethod, "DELETE")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer incident-secret")
+            let data = #"{"incident":{"id":"flood-1","name":"Riverside flood","kind":"incident","bounds":{"west":-84.52,"south":39.10,"east":-84.51,"north":39.11},"imagery":null,"version":3,"roadCount":0,"roads":[],"reports":[]}}"#.data(using: .utf8)!
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
+        }
+
+        let detail = try await IncidentAPIClient(baseURL: "https://aftermap.example", urlSession: session)
+            .removeImagery(incidentId: "flood-1", key: "incident-secret")
+
+        XCTAssertNil(detail.imagery)
+        XCTAssertEqual(detail.version, 3)
     }
 
     func testRoadImportUsesIncidentAuthorizationContract() async throws {
@@ -518,6 +562,203 @@ final class AftermapTests: XCTestCase {
         store.locationFailed("Location permission was denied. Choose a start point on the map instead.")
 
         XCTAssertEqual(store.notice, "Location permission was denied. Choose a start point on the map instead.")
+    }
+
+    func testNavigationGeometryProjectsProgressAndOffRouteDistance() throws {
+        let route = [
+            IncidentCoordinate(latitude: 0, longitude: 0),
+            IncidentCoordinate(latitude: 0, longitude: 0.01),
+        ]
+        let projection = try XCTUnwrap(NavigationGeometry.project(
+            CLLocationCoordinate2D(latitude: 0.0001, longitude: 0.005),
+            onto: route
+        ))
+
+        XCTAssertEqual(projection.fractionOnSegment, 0.5, accuracy: 0.01)
+        XCTAssertEqual(projection.distanceAlongRoute / projection.totalRouteDistance, 0.5, accuracy: 0.01)
+        XCTAssertEqual(projection.distanceFromRoute, 11.1, accuracy: 1.5)
+        XCTAssertEqual(projection.remainingCoordinates.count, 2)
+    }
+
+    func testNavigationGuidanceBuildsTurnsForIncidentRouteGeometry() throws {
+        let route = IncidentRouteResponse(
+            status: .complete,
+            coordinates: [
+                IncidentCoordinate(latitude: 39.1000, longitude: -84.5100),
+                IncidentCoordinate(latitude: 39.1020, longitude: -84.5100),
+                IncidentCoordinate(latitude: 39.1020, longitude: -84.5070),
+            ],
+            distanceMeters: 480,
+            reason: "Verified passage",
+            startLabel: nil,
+            endLabel: nil,
+            expectedTravelTime: 360
+        )
+
+        let maneuvers = NavigationGuidance.maneuvers(for: route, mode: .walking)
+
+        XCTAssertEqual(maneuvers.first?.instruction, "Head toward your destination")
+        XCTAssertTrue(maneuvers.contains(where: { $0.instruction == "Turn right" }))
+        XCTAssertEqual(maneuvers.last?.instruction, "Arrive at your destination")
+        XCTAssertEqual(maneuvers.last?.distanceFromStart, 480)
+    }
+
+    @MainActor
+    func testNavigationSessionProgressesAndArrives() throws {
+        let suite = "AFTERMAP.Navigation.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = WorldMapStore(defaults: defaults)
+        let start = IncidentCoordinate(latitude: 39.1000, longitude: -84.5100)
+        let turn = IncidentCoordinate(latitude: 39.1010, longitude: -84.5090)
+        let finish = IncidentCoordinate(latitude: 39.1020, longitude: -84.5080)
+        let route = IncidentRouteResponse(
+            status: .complete,
+            coordinates: [start, turn, finish],
+            distanceMeters: 300,
+            reason: "Safe test route",
+            startLabel: "Head northeast",
+            endLabel: "Arrive at your destination",
+            expectedTravelTime: 180,
+            maneuvers: [
+                RouteManeuver(id: "start", instruction: "Head northeast", coordinate: start, distanceFromStart: 0, distanceMeters: 150),
+                RouteManeuver(id: "turn", instruction: "Bear right", coordinate: turn, distanceFromStart: 150, distanceMeters: 150),
+                RouteManeuver(id: "finish", instruction: "Arrive at your destination", coordinate: finish, distanceFromStart: 300, distanceMeters: 0),
+            ]
+        )
+        store.origin = start
+        store.destination = finish
+        store.acceptUserLocation(start.coordinate)
+        store.installRouteForTesting(route)
+
+        XCTAssertTrue(store.startNavigation(enableLiveTracking: false))
+        guard case let .navigating(progress) = store.navigationState else {
+            return XCTFail("Expected live navigation after a known location was available")
+        }
+        XCTAssertEqual(progress.currentInstruction, "Head northeast")
+        XCTAssertGreaterThan(progress.remainingDistance, 250)
+        XCTAssertTrue(store.followsNavigationCamera)
+
+        store.acceptUserLocation(finish.coordinate)
+        XCTAssertEqual(store.navigationState, .arrived)
+        XCTAssertFalse(store.followsNavigationCamera)
+        XCTAssertTrue(store.navigationRemainingCoordinates.isEmpty)
+    }
+
+    @MainActor
+    func testNavigationCannotStartFromPartialRoute() {
+        let suite = "AFTERMAP.PartialNavigation.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = WorldMapStore(defaults: defaults)
+        let start = IncidentCoordinate(latitude: 39.1, longitude: -84.51)
+        let finish = IncidentCoordinate(latitude: 39.2, longitude: -84.41)
+        store.origin = start
+        store.destination = finish
+        store.installRouteForTesting(IncidentRouteResponse(
+            status: .partial,
+            coordinates: [start, finish],
+            distanceMeters: 1_000,
+            reason: "Only part of this route is verified",
+            startLabel: nil,
+            endLabel: nil
+        ))
+
+        XCTAssertFalse(store.startNavigation(enableLiveTracking: false))
+        XCTAssertEqual(store.navigationState, .idle)
+        XCTAssertEqual(store.notice, "Show a complete safe route before starting navigation.")
+    }
+
+    @MainActor
+    func testNavigationCannotStartWithUnverifiedStreetSegments() {
+        let suite = "AFTERMAP.UnverifiedNavigation.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = WorldMapStore(defaults: defaults)
+        let start = IncidentCoordinate(latitude: 39.1, longitude: -84.51)
+        let middle = IncidentCoordinate(latitude: 39.11, longitude: -84.50)
+        let finish = IncidentCoordinate(latitude: 39.12, longitude: -84.49)
+        store.origin = start
+        store.destination = finish
+        store.installRouteForTesting(IncidentRouteResponse(
+            status: .complete,
+            coordinates: [start, middle, finish],
+            distanceMeters: 2_000,
+            reason: "One street needs confirmation",
+            startLabel: "Head northeast",
+            endLabel: "Arrive at your destination",
+            unverifiedSegments: [1]
+        ))
+
+        XCTAssertFalse(store.canStartNavigation)
+        XCTAssertFalse(store.startNavigation(enableLiveTracking: false))
+        XCTAssertEqual(store.navigationState, .idle)
+        XCTAssertEqual(
+            store.notice,
+            "This route includes unverified street segments. Confirm current passage evidence or choose a fully verified route before starting live navigation."
+        )
+    }
+
+    @MainActor
+    func testThreeOffRouteUpdatesRequestSafeRerouteFromCurrentLocation() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let rerouteRequested = expectation(description: "Incident-aware reroute requested")
+        let suite = "AFTERMAP.OffRouteNavigation.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.set("https://aftermap.example", forKey: "aftermap.serverURL")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let start = IncidentCoordinate(latitude: 39.1000, longitude: -84.5100)
+        let finish = IncidentCoordinate(latitude: 39.1020, longitude: -84.5080)
+        let offRoute = IncidentCoordinate(latitude: 39.1100, longitude: -84.5100)
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/routes")
+            XCTAssertEqual(request.httpMethod, "POST")
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: try requestBody(request)) as? [String: Any])
+            let origin = try XCTUnwrap(body["origin"] as? [String: Double])
+            XCTAssertEqual(try XCTUnwrap(origin["latitude"]), offRoute.latitude, accuracy: 0.000_001)
+            XCTAssertEqual(try XCTUnwrap(origin["longitude"]), offRoute.longitude, accuracy: 0.000_001)
+            XCTAssertEqual(body["mode"] as? String, "cycling")
+            rerouteRequested.fulfill()
+            let data = #"{"status":"complete","coordinates":[{"latitude":39.11,"longitude":-84.51},{"latitude":39.102,"longitude":-84.508}],"distanceMeters":920,"reason":"Safe reroute","expectedTravelTime":300}"#.data(using: .utf8)!
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
+        }
+
+        let store = WorldMapStore(defaults: defaults, urlSession: session)
+        store.travelMode = .cycling
+        store.origin = start
+        store.destination = finish
+        store.acceptUserLocation(start.coordinate)
+        store.installRouteForTesting(IncidentRouteResponse(
+            status: .complete,
+            coordinates: [start, finish],
+            distanceMeters: 300,
+            reason: "Initial route",
+            startLabel: "Head northeast",
+            endLabel: "Arrive at your destination"
+        ))
+        XCTAssertTrue(store.startNavigation(enableLiveTracking: false))
+
+        store.acceptUserLocation(offRoute.coordinate)
+        store.acceptUserLocation(offRoute.coordinate)
+        store.acceptUserLocation(offRoute.coordinate)
+
+        await fulfillment(of: [rerouteRequested], timeout: 3)
+        for _ in 0..<50 {
+            if case let .route(route, _) = store.routeState, route.reason == "Safe reroute" { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        guard case let .route(route, _) = store.routeState else {
+            return XCTFail("Expected the reroute to replace the active route")
+        }
+        XCTAssertEqual(route.reason, "Safe reroute")
+        XCTAssertEqual(store.origin, offRoute)
+        guard case let .navigating(progress) = store.navigationState else {
+            return XCTFail("Expected navigation to continue on the safe reroute")
+        }
+        XCTAssertGreaterThan(progress.remainingDistance, 800)
     }
 
     func testLiveWorldContract() async throws {

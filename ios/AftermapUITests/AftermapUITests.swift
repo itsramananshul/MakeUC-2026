@@ -129,6 +129,26 @@ final class AftermapUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Tap the map to choose your destination"].exists)
     }
 
+    func testStartNavigationShowsLiveGuidanceControls() {
+        let app = XCUIApplication()
+        app.launchEnvironment["AFTERMAP_AUTOMATIC_LOCATION"] = "0"
+        app.launchEnvironment["AFTERMAP_NAVIGATION_PREVIEW"] = "1"
+        app.launch()
+
+        let directions = app.buttons["route.preview"]
+        XCTAssertTrue(directions.waitForExistence(timeout: 10))
+        directions.tap()
+
+        let start = app.buttons["navigation.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 5))
+        start.tap()
+
+        XCTAssertTrue(app.otherElements["navigation.banner"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Head northeast"].exists)
+        XCTAssertTrue(app.buttons["navigation.recenter"].exists)
+        XCTAssertTrue(app.buttons["navigation.end"].exists)
+    }
+
     func testFieldReportCanChooseMapPointWithoutTypingCoordinates() {
         let app = XCUIApplication()
         app.launchArguments = ["-aftermapIncidentPreview"]

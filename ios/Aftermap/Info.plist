@@ -32,7 +32,7 @@
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Gaslight Maps can connect to an incident server on your local network.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Gaslight Maps uses your location to choose route endpoints and place field evidence.</string>
+	<string>Gaslight Maps uses your location for live turn-by-turn navigation, route endpoints, and field evidence.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Gaslight Maps records your incident report while speech transcription is active.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
@@ -44,6 +44,10 @@
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
 	</dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

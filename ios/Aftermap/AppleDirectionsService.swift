@@ -26,6 +26,30 @@ struct AppleDirectionsService {
             let reason = route.name.isEmpty
                 ? "Apple Maps \(mode.shortLabel.lowercased()) route."
                 : "\(route.name) • Apple Maps"
+            var distanceFromStart = 0.0
+            let maneuvers = route.steps.enumerated().compactMap { index, step -> RouteManeuver? in
+                let instruction = step.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
+                let stepStartDistance = distanceFromStart
+                distanceFromStart += step.distance
+                guard !instruction.isEmpty else { return nil }
+                let coordinate: CLLocationCoordinate2D
+                if step.polyline.pointCount > 0 {
+                    var first = CLLocationCoordinate2D()
+                    step.polyline.getCoordinates(&first, range: NSRange(location: 0, length: 1))
+                    coordinate = first
+                } else {
+                    coordinate = index == route.steps.indices.last
+                        ? destination.coordinate
+                        : coordinates[min(index, coordinates.count - 1)]
+                }
+                return RouteManeuver(
+                    id: "apple-\(index)-\(Int(stepStartDistance.rounded()))",
+                    instruction: instruction,
+                    coordinate: IncidentCoordinate(coordinate),
+                    distanceFromStart: min(stepStartDistance, route.distance),
+                    distanceMeters: step.distance
+                )
+            }
             return IncidentRouteResponse(
                 status: .complete,
                 coordinates: coordinates.map(IncidentCoordinate.init),
@@ -33,7 +57,8 @@ struct AppleDirectionsService {
                 reason: reason,
                 startLabel: route.steps.first?.instructions,
                 endLabel: route.steps.last?.instructions,
-                expectedTravelTime: route.expectedTravelTime
+                expectedTravelTime: route.expectedTravelTime,
+                maneuvers: maneuvers
             )
         }
     }

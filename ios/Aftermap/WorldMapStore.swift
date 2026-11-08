@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreLocation
 import Foundation
 
@@ -66,6 +67,9 @@ final class WorldMapStore: ObservableObject {
     @Published var destination: IncidentCoordinate?
     @Published var travelMode: RouteTravelMode = .driving {
         didSet {
+            if oldValue != travelMode, navigationState != .idle {
+                stopNavigation(announce: false)
+            }
             routeState = .idle
             routeAlternatives = []
         }
@@ -81,6 +85,11 @@ final class WorldMapStore: ObservableObject {
     @Published var notice: String?
     @Published private(set) var userCoordinate: IncidentCoordinate?
     @Published private(set) var locationRequestRevision = 0
+    @Published private(set) var navigationState: NavigationSessionState = .idle
+    @Published private(set) var navigationHeading: CLLocationDirection?
+    @Published private(set) var navigationCameraRevision = 0
+    @Published private(set) var navigationRenderRevision = 0
+    @Published private(set) var navigationRemainingCoordinates: [IncidentCoordinate] = []
     @Published var reportLocation: IncidentCoordinate?
     @Published private(set) var reportLocationRevision = 0
     @Published var incidentDraftCenter: IncidentCoordinate?
@@ -99,6 +108,24 @@ final class WorldMapStore: ObservableObject {
     }
     private var pendingLocationUse: PendingLocationUse?
     private var isIncidentPreviewMode = false
+    private var lastUserLocation: CLLocation?
+    private var navigationRoute: IncidentRouteResponse?
+    private var navigationManeuvers: [RouteManeuver] = []
+    private var navigationAllowedIncidentID: String?
+    private var navigationIncidentVersions: [String: Int] = [:]
+    private var navigationLastRenderedDistance = -Double.infinity
+    private var navigationLastSpokenManeuver = -1
+    private var navigationOffRouteUpdates = 0
+    private var navigationLastRerouteAt: Date?
+    private var navigationVoiceEnabled = true
+    private let navigationVoice = AVSpeechSynthesizer()
+    private lazy var navigationLocationDriver: NavigationLocationDriver = {
+        let driver = NavigationLocationDriver()
+        driver.onLocation = { [weak self] location in self?.acceptUserLocation(location) }
+        driver.onHeading = { [weak self] heading in self?.acceptNavigationHeading(heading) }
+        driver.onFailure = { [weak self] message in self?.navigationLocationFailed(message) }
+        return driver
+    }()
 
     init(defaults: UserDefaults = .standard, urlSession: URLSession = .shared) {
         self.defaults = defaults
@@ -152,6 +179,34 @@ final class WorldMapStore: ObservableObject {
             connection = .live
             isIncidentPreviewMode = true
             focus(on: IncidentCoordinate(bounds.center), zoom: 15)
+        }
+        if ProcessInfo.processInfo.environment["AFTERMAP_NAVIGATION_PREVIEW"] == "1" {
+            let start = IncidentCoordinate(latitude: 39.10310, longitude: -84.51200)
+            let turn = IncidentCoordinate(latitude: 39.10420, longitude: -84.50980)
+            let finish = IncidentCoordinate(latitude: 39.10610, longitude: -84.50720)
+            let route = IncidentRouteResponse(
+                status: .complete,
+                coordinates: [start, turn, finish],
+                distanceMeters: 420,
+                reason: "Navigation preview route",
+                startLabel: "Head northeast",
+                endLabel: "Arrive at your destination",
+                expectedTravelTime: 240,
+                maneuvers: [
+                    RouteManeuver(id: "preview-start", instruction: "Head northeast", coordinate: start, distanceFromStart: 0, distanceMeters: 180),
+                    RouteManeuver(id: "preview-turn", instruction: "Turn right", coordinate: turn, distanceFromStart: 180, distanceMeters: 240),
+                    RouteManeuver(id: "preview-arrive", instruction: "Arrive at your destination", coordinate: finish, distanceFromStart: 420, distanceMeters: 0),
+                ]
+            )
+            origin = start
+            destination = finish
+            userCoordinate = start
+            lastUserLocation = CLLocation(latitude: start.latitude, longitude: start.longitude)
+            routeState = .route(route, affectedIncidentName: nil)
+            routeAlternatives = [route]
+            connection = .live
+            isIncidentPreviewMode = true
+            focus(on: start, zoom: 16)
         }
 #endif
     }
@@ -210,6 +265,7 @@ final class WorldMapStore: ObservableObject {
                     selectedRoad = nil
                 }
             }
+            revalidateActiveNavigation()
         } catch {
             connection = .stale(error.localizedDescription)
         }
@@ -342,6 +398,7 @@ final class WorldMapStore: ObservableObject {
 
     func useSelectedPlaceAsDestination() {
         guard let selectedPlace else { return }
+        stopNavigation(announce: false)
         destination = selectedPlace.coordinate
         destinationPlace = selectedPlace
         routeState = .idle
@@ -349,6 +406,7 @@ final class WorldMapStore: ObservableObject {
     }
 
     func setOrigin(place: PlaceResult) {
+        stopNavigation(announce: false)
         origin = place.coordinate
         originPlace = place
         routeState = .idle
@@ -358,6 +416,7 @@ final class WorldMapStore: ObservableObject {
     }
 
     func setDestination(place: PlaceResult) {
+        stopNavigation(announce: false)
         destination = place.coordinate
         destinationPlace = place
         routeState = .idle
@@ -392,9 +451,11 @@ final class WorldMapStore: ObservableObject {
         let value = IncidentCoordinate(coordinate)
         switch selectionMode {
         case .origin:
+            stopNavigation(announce: false)
             origin = value
             originPlace = nil
         case .destination:
+            stopNavigation(announce: false)
             destination = value
             destinationPlace = nil
         case .reportLocation:
@@ -449,8 +510,19 @@ final class WorldMapStore: ObservableObject {
     }
 
     func acceptUserLocation(_ coordinate: CLLocationCoordinate2D) {
+        acceptUserLocation(CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
+    }
+
+    func acceptUserLocation(_ location: CLLocation) {
+        let coordinate = location.coordinate
         let value = IncidentCoordinate(coordinate)
+        let previousLocation = lastUserLocation
+        lastUserLocation = location
         userCoordinate = value
+        if navigationState.keepsLocationTrackingActive,
+           (previousLocation?.timestamp != location.timestamp || (previousLocation?.distance(from: location) ?? .infinity) > 0.5) {
+            updateNavigationProgress(with: location)
+        }
         switch pendingLocationUse {
         case .origin:
             origin = value
@@ -483,7 +555,10 @@ final class WorldMapStore: ObservableObject {
     }
 
     func locationFailed(_ message: String) {
-        guard let pending = pendingLocationUse else { return }
+        guard let pending = pendingLocationUse else {
+            if navigationState == .awaitingLocation { navigationLocationFailed(message) }
+            return
+        }
         pendingLocationUse = nil
         if case .origin(userInitiated: false) = pending { return }
         notice = message
@@ -598,6 +673,259 @@ final class WorldMapStore: ObservableObject {
         }
         routeState = .route(route, affectedIncidentName: nil)
     }
+
+    var showsNavigationUI: Bool {
+        navigationState != .idle
+    }
+
+    var followsNavigationCamera: Bool {
+        navigationState.keepsLocationTrackingActive
+    }
+
+    var canStartNavigation: Bool {
+        guard case let .route(route, _) = routeState else { return false }
+        return route.status == .complete
+            && route.coordinates.count > 1
+            && destination != nil
+            && !route.hasUnverifiedSegments
+    }
+
+    @discardableResult
+    func startNavigation(enableLiveTracking: Bool = true) -> Bool {
+        guard case let .route(route, affectedIncidentName) = routeState,
+              route.status == .complete,
+              route.coordinates.count > 1,
+              destination != nil,
+              !route.hasUnverifiedSegments else {
+            if case let .route(route, _) = routeState, route.hasUnverifiedSegments {
+                notice = "This route includes unverified street segments. Confirm current passage evidence or choose a fully verified route before starting live navigation."
+                return false
+            }
+            notice = "Show a complete safe route before starting navigation."
+            return false
+        }
+
+        var shouldTrackLiveLocation = enableLiveTracking
+#if DEBUG
+        if ProcessInfo.processInfo.environment["AFTERMAP_NAVIGATION_PREVIEW"] == "1" {
+            shouldTrackLiveLocation = false
+        }
+#endif
+        navigationVoiceEnabled = shouldTrackLiveLocation
+        prepareNavigation(route, affectedIncidentName: affectedIncidentName)
+        navigationState = .awaitingLocation
+        navigationCameraRevision += 1
+        locationRequestRevision += 1
+        if shouldTrackLiveLocation { navigationLocationDriver.start() }
+        speak("Starting navigation")
+        if let lastUserLocation { updateNavigationProgress(with: lastUserLocation) }
+        return true
+    }
+
+    func stopNavigation(announce: Bool = true) {
+        guard navigationState != .idle else { return }
+        navigationLocationDriver.stop()
+        navigationVoice.stopSpeaking(at: .immediate)
+        navigationState = .idle
+        navigationRoute = nil
+        navigationManeuvers = []
+        navigationRemainingCoordinates = []
+        navigationAllowedIncidentID = nil
+        navigationIncidentVersions = [:]
+        navigationOffRouteUpdates = 0
+        navigationHeading = nil
+        navigationCameraRevision += 1
+        navigationRenderRevision += 1
+        if announce { speak("Navigation ended") }
+    }
+
+    func retryNavigation() {
+        guard case .blocked = navigationState, let location = lastUserLocation, destination != nil else { return }
+        navigationState = .rerouting(nil)
+        navigationLocationDriver.start()
+        navigationCameraRevision += 1
+        Task { await rerouteFromCurrentLocation(location) }
+    }
+
+    func recenterNavigation() {
+        guard followsNavigationCamera else { return }
+        navigationCameraRevision += 1
+    }
+
+    private func prepareNavigation(_ route: IncidentRouteResponse, affectedIncidentName: String?) {
+        navigationRoute = route
+        navigationManeuvers = NavigationGuidance.maneuvers(for: route, mode: travelMode)
+        navigationRemainingCoordinates = route.coordinates
+        navigationAllowedIncidentID = affectedIncidentName.flatMap { name in
+            incidents.first(where: { $0.name == name })?.id
+        }
+        navigationIncidentVersions = Dictionary(uniqueKeysWithValues: incidents.map { ($0.id, $0.version) })
+        navigationLastRenderedDistance = -Double.infinity
+        navigationLastSpokenManeuver = -1
+        navigationOffRouteUpdates = 0
+        navigationRenderRevision += 1
+    }
+
+    private func updateNavigationProgress(with location: CLLocation) {
+        guard let route = navigationRoute,
+              let projection = NavigationGeometry.project(location.coordinate, onto: route.coordinates) else {
+            navigationLocationFailed("The active route can no longer be followed.")
+            return
+        }
+
+        let destinationDistance = destination.map {
+            location.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude))
+        } ?? .infinity
+        let fraction = min(1, max(0, projection.distanceAlongRoute / max(projection.totalRouteDistance, 1)))
+        let reportedDistanceAlongRoute = route.distanceMeters * fraction
+        let remainingDistance = max(0, route.distanceMeters - reportedDistanceAlongRoute)
+        let offRouteThreshold: CLLocationDistance = switch travelMode {
+        case .walking: 25
+        case .cycling: 35
+        case .driving: 45
+        case .transit: 60
+        }
+
+        if destinationDistance <= 25 || (remainingDistance <= 15 && projection.distanceFromRoute <= offRouteThreshold) {
+            navigationState = .arrived
+            navigationRemainingCoordinates = []
+            navigationLocationDriver.stop()
+            navigationCameraRevision += 1
+            navigationRenderRevision += 1
+            speak("You have arrived at your destination")
+            return
+        }
+
+        if abs(reportedDistanceAlongRoute - navigationLastRenderedDistance) >= 12 || navigationRemainingCoordinates.isEmpty {
+            navigationRemainingCoordinates = projection.remainingCoordinates
+            navigationLastRenderedDistance = reportedDistanceAlongRoute
+            navigationRenderRevision += 1
+        }
+
+        let maneuverIndex = NavigationGuidance.currentManeuverIndex(
+            in: navigationManeuvers,
+            distanceAlongRoute: reportedDistanceAlongRoute
+        )
+        let maneuver = navigationManeuvers[min(maneuverIndex, max(0, navigationManeuvers.count - 1))]
+        let nextInstruction = navigationManeuvers.indices.contains(maneuverIndex + 1)
+            ? navigationManeuvers[maneuverIndex + 1].instruction
+            : nil
+        let distanceToManeuver = max(0, maneuver.distanceFromStart - reportedDistanceAlongRoute)
+        let remainingTime = route.expectedTravelTime.map { max(0, $0 * (1 - fraction)) }
+        let progress = NavigationProgress(
+            currentInstruction: maneuver.instruction,
+            nextInstruction: nextInstruction,
+            distanceToManeuver: distanceToManeuver,
+            remainingDistance: remainingDistance,
+            remainingTime: remainingTime,
+            fractionComplete: fraction,
+            distanceFromRoute: projection.distanceFromRoute,
+            maneuverIndex: maneuverIndex
+        )
+
+        navigationOffRouteUpdates = projection.distanceFromRoute > offRouteThreshold
+            ? navigationOffRouteUpdates + 1
+            : 0
+
+        navigationState = .navigating(progress)
+        navigationCameraRevision += 1
+        announceManeuverIfNeeded(progress)
+
+        if navigationOffRouteUpdates >= 3 {
+            triggerReroute(from: location, progress: progress)
+        }
+    }
+
+    private func announceManeuverIfNeeded(_ progress: NavigationProgress) {
+        guard progress.maneuverIndex != navigationLastSpokenManeuver else { return }
+        navigationLastSpokenManeuver = progress.maneuverIndex
+        let prefix = progress.distanceToManeuver > 20
+            ? "In \(NavigationGuidance.spokenDistance(progress.distanceToManeuver)), "
+            : ""
+        speak(prefix + progress.currentInstruction)
+    }
+
+    private func triggerReroute(from location: CLLocation, progress: NavigationProgress?) {
+        if case .rerouting = navigationState { return }
+        guard Date().timeIntervalSince(navigationLastRerouteAt ?? .distantPast) >= 8 else { return }
+        navigationLastRerouteAt = Date()
+        navigationState = .rerouting(progress)
+        navigationOffRouteUpdates = 0
+        speak("Rerouting around affected areas")
+        Task { await rerouteFromCurrentLocation(location) }
+    }
+
+    private func rerouteFromCurrentLocation(_ location: CLLocation) async {
+        origin = IncidentCoordinate(location.coordinate)
+        originPlace = nil
+        await previewRoute()
+        guard case let .route(route, affectedIncidentName) = routeState,
+              route.status == .complete,
+              route.coordinates.count > 1 else {
+            let reason: String
+            if case let .unavailable(message) = routeState {
+                reason = message
+            } else {
+                reason = "No evidence-aware route is currently available."
+            }
+            navigationState = .blocked(reason)
+            navigationLocationDriver.stop()
+            navigationCameraRevision += 1
+            speak("Navigation paused. \(reason)")
+            return
+        }
+        prepareNavigation(route, affectedIncidentName: affectedIncidentName)
+        navigationState = .awaitingLocation
+        speak("Route updated")
+        updateNavigationProgress(with: location)
+    }
+
+    private func revalidateActiveNavigation() {
+        guard navigationState.keepsLocationTrackingActive,
+              case .navigating = navigationState,
+              let location = lastUserLocation,
+              !navigationRemainingCoordinates.isEmpty else { return }
+        let changedConflict = incidents.first { incident in
+            guard incident.bounds.intersects(navigationRemainingCoordinates) else { return false }
+            if incident.id != navigationAllowedIncidentID { return true }
+            return navigationIncidentVersions[incident.id] != incident.version
+        }
+        guard changedConflict != nil else { return }
+        triggerReroute(from: location, progress: navigationState.progress)
+    }
+
+    private func acceptNavigationHeading(_ heading: CLLocationDirection) {
+        guard followsNavigationCamera else { return }
+        navigationHeading = heading
+        navigationCameraRevision += 1
+    }
+
+    private func navigationLocationFailed(_ message: String) {
+        guard navigationState.keepsLocationTrackingActive else { return }
+        navigationLocationDriver.stop()
+        navigationState = .blocked(message)
+        navigationCameraRevision += 1
+        notice = message
+        speak("Navigation paused. \(message)")
+    }
+
+    private func speak(_ text: String) {
+        guard navigationVoiceEnabled, !text.isEmpty else { return }
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .voicePrompt, options: [.duckOthers])
+        try? AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
+        navigationVoice.stopSpeaking(at: .immediate)
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.rate = 0.49
+        utterance.voice = AVSpeechSynthesisVoice(language: Locale.current.language.languageCode?.identifier ?? "en-US")
+        navigationVoice.speak(utterance)
+    }
+
+#if DEBUG
+    func installRouteForTesting(_ route: IncidentRouteResponse, affectedIncidentName: String? = nil) {
+        routeState = .route(route, affectedIncidentName: affectedIncidentName)
+        routeAlternatives = [route]
+    }
+#endif
 
     func createIncident(name: String, center: IncidentCoordinate, widthKilometers: Double, operatorKey: String) async -> IncidentCreationResponse? {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -740,6 +1068,42 @@ final class WorldMapStore: ObservableObject {
         }
     }
 
+    func removeIncidentImagery() async -> Bool {
+        guard let incident = selectedIncident else {
+            notice = "Select an incident before removing aerial imagery."
+            return false
+        }
+        guard incidentDetail?.imagery != nil else {
+            notice = "This incident has no published aerial survey."
+            return false
+        }
+        guard !reportKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            notice = "Enter the incident access key in Settings first."
+            return false
+        }
+        do {
+            let detail = try await client.removeImagery(incidentId: incident.id, key: reportKey)
+            incidentDetail = detail
+            let summary = Incident(
+                id: detail.id,
+                name: detail.name,
+                kind: detail.kind,
+                bounds: detail.bounds,
+                imagery: detail.imagery,
+                version: detail.version,
+                roadCount: detail.roadCount
+            )
+            selectedIncident = summary
+            incidents.removeAll { $0.id == summary.id }
+            incidents.insert(summary, at: 0)
+            notice = "Aerial survey removed. The labeled base map remains available."
+            return true
+        } catch {
+            notice = error.localizedDescription
+            return false
+        }
+    }
+
     func importIncidentRoads() async -> Bool {
         guard let incident = selectedIncident else {
             notice = "Select an incident before importing roads."
@@ -777,5 +1141,291 @@ final class WorldMapStore: ObservableObject {
     func focus(on coordinate: IncidentCoordinate, zoom: Double) {
         cameraRevision += 1
         cameraTarget = CameraTarget(coordinate: coordinate, zoom: zoom, revision: cameraRevision)
+    }
+}
+
+struct NavigationRouteProjection: Equatable {
+    var segmentIndex: Int
+    var fractionOnSegment: Double
+    var projectedCoordinate: IncidentCoordinate
+    var distanceFromRoute: CLLocationDistance
+    var distanceAlongRoute: CLLocationDistance
+    var totalRouteDistance: CLLocationDistance
+    var remainingCoordinates: [IncidentCoordinate]
+}
+
+enum NavigationGeometry {
+    static func project(
+        _ location: CLLocationCoordinate2D,
+        onto route: [IncidentCoordinate]
+    ) -> NavigationRouteProjection? {
+        guard route.count > 1 else { return nil }
+        let latitudeScale = 111_132.0
+        let longitudeScale = max(1, 111_320.0 * cos(location.latitude * .pi / 180))
+        var cumulativeDistance = 0.0
+        var best: NavigationRouteProjection?
+
+        for index in 0..<(route.count - 1) {
+            let start = route[index]
+            let end = route[index + 1]
+            let longitudeSpan = normalizedLongitude(end.longitude - start.longitude)
+            let ax = normalizedLongitude(start.longitude - location.longitude) * longitudeScale
+            let ay = (start.latitude - location.latitude) * latitudeScale
+            let dx = longitudeSpan * longitudeScale
+            let dy = (end.latitude - start.latitude) * latitudeScale
+            let denominator = dx * dx + dy * dy
+            let fraction = denominator > 0
+                ? min(1, max(0, -(ax * dx + ay * dy) / denominator))
+                : 0
+            let closestX = ax + fraction * dx
+            let closestY = ay + fraction * dy
+            let distanceFromRoute = hypot(closestX, closestY)
+            let startLocation = CLLocation(latitude: start.latitude, longitude: start.longitude)
+            let endLocation = CLLocation(latitude: end.latitude, longitude: end.longitude)
+            let segmentDistance = startLocation.distance(from: endLocation)
+            let projected = IncidentCoordinate(
+                latitude: start.latitude + fraction * (end.latitude - start.latitude),
+                longitude: wrappedLongitude(start.longitude + fraction * longitudeSpan)
+            )
+            var remaining = [projected]
+            remaining.append(contentsOf: route[(index + 1)...])
+            let candidate = NavigationRouteProjection(
+                segmentIndex: index,
+                fractionOnSegment: fraction,
+                projectedCoordinate: projected,
+                distanceFromRoute: distanceFromRoute,
+                distanceAlongRoute: cumulativeDistance + fraction * segmentDistance,
+                totalRouteDistance: 0,
+                remainingCoordinates: remaining
+            )
+            if best == nil || distanceFromRoute < best!.distanceFromRoute { best = candidate }
+            cumulativeDistance += segmentDistance
+        }
+
+        guard var best else { return nil }
+        best.totalRouteDistance = cumulativeDistance
+        return best
+    }
+
+    static func routeDistance(_ route: [IncidentCoordinate]) -> CLLocationDistance {
+        zip(route, route.dropFirst()).reduce(0) { total, pair in
+            total + CLLocation(latitude: pair.0.latitude, longitude: pair.0.longitude)
+                .distance(from: CLLocation(latitude: pair.1.latitude, longitude: pair.1.longitude))
+        }
+    }
+
+    static func bearing(from start: IncidentCoordinate, to end: IncidentCoordinate) -> Double {
+        let startLatitude = start.latitude * .pi / 180
+        let endLatitude = end.latitude * .pi / 180
+        let longitudeDelta = normalizedLongitude(end.longitude - start.longitude) * .pi / 180
+        let y = sin(longitudeDelta) * cos(endLatitude)
+        let x = cos(startLatitude) * sin(endLatitude) - sin(startLatitude) * cos(endLatitude) * cos(longitudeDelta)
+        return wrappedBearing(atan2(y, x) * 180 / .pi)
+    }
+
+    static func signedTurn(from first: IncidentCoordinate, via middle: IncidentCoordinate, to last: IncidentCoordinate) -> Double {
+        let incoming = bearing(from: first, to: middle)
+        let outgoing = bearing(from: middle, to: last)
+        var delta = outgoing - incoming
+        while delta > 180 { delta -= 360 }
+        while delta < -180 { delta += 360 }
+        return delta
+    }
+
+    private static func normalizedLongitude(_ value: Double) -> Double {
+        var result = value
+        while result > 180 { result -= 360 }
+        while result < -180 { result += 360 }
+        return result
+    }
+
+    private static func wrappedLongitude(_ value: Double) -> Double {
+        normalizedLongitude(value)
+    }
+
+    private static func wrappedBearing(_ value: Double) -> Double {
+        let result = value.truncatingRemainder(dividingBy: 360)
+        return result >= 0 ? result : result + 360
+    }
+}
+
+enum NavigationGuidance {
+    static func maneuvers(for route: IncidentRouteResponse, mode: RouteTravelMode) -> [RouteManeuver] {
+        if var provided = route.maneuvers, !provided.isEmpty {
+            provided = provided
+                .map { maneuver in
+                    var value = maneuver
+                    value.distanceFromStart = min(route.distanceMeters, max(0, value.distanceFromStart))
+                    return value
+                }
+                .sorted { $0.distanceFromStart < $1.distanceFromStart }
+            appendArrivalIfNeeded(to: &provided, route: route)
+            return provided
+        }
+
+        guard let start = route.coordinates.first, let destination = route.coordinates.last else { return [] }
+        var result = [RouteManeuver(
+            id: "generated-start",
+            instruction: route.startLabel?.nilIfBlank ?? "Head toward your destination",
+            coordinate: start,
+            distanceFromStart: 0,
+            distanceMeters: route.distanceMeters
+        )]
+        let geometryDistance = max(1, NavigationGeometry.routeDistance(route.coordinates))
+        let scale = route.distanceMeters / geometryDistance
+        let minimumSpacing: CLLocationDistance = switch mode {
+        case .walking: 35
+        case .cycling: 60
+        case .driving, .transit: 90
+        }
+        var distanceAlongGeometry = 0.0
+        var lastManeuverDistance = 0.0
+        if route.coordinates.count > 2 {
+            for index in 1..<(route.coordinates.count - 1) {
+                let previous = route.coordinates[index - 1]
+                let current = route.coordinates[index]
+                let next = route.coordinates[index + 1]
+                distanceAlongGeometry += CLLocation(latitude: previous.latitude, longitude: previous.longitude)
+                    .distance(from: CLLocation(latitude: current.latitude, longitude: current.longitude))
+                let reportedDistance = distanceAlongGeometry * scale
+                let turn = NavigationGeometry.signedTurn(from: previous, via: current, to: next)
+                guard abs(turn) >= 28, reportedDistance - lastManeuverDistance >= minimumSpacing else { continue }
+                let instruction: String
+                if abs(turn) >= 145 {
+                    instruction = "Make a U-turn"
+                } else if turn > 0 {
+                    instruction = abs(turn) >= 70 ? "Turn right" : "Bear right"
+                } else {
+                    instruction = abs(turn) >= 70 ? "Turn left" : "Bear left"
+                }
+                result.append(RouteManeuver(
+                    id: "generated-\(index)",
+                    instruction: instruction,
+                    coordinate: current,
+                    distanceFromStart: min(route.distanceMeters, reportedDistance),
+                    distanceMeters: 0
+                ))
+                lastManeuverDistance = reportedDistance
+            }
+        }
+        result.append(RouteManeuver(
+            id: "generated-arrival",
+            instruction: route.endLabel?.nilIfBlank ?? "Arrive at your destination",
+            coordinate: destination,
+            distanceFromStart: route.distanceMeters,
+            distanceMeters: 0
+        ))
+        return result
+    }
+
+    static func currentManeuverIndex(in maneuvers: [RouteManeuver], distanceAlongRoute: Double) -> Int {
+        guard maneuvers.count > 1 else { return 0 }
+        if distanceAlongRoute < 20 { return 0 }
+        return maneuvers.firstIndex(where: { $0.distanceFromStart > distanceAlongRoute + 8 }) ?? (maneuvers.count - 1)
+    }
+
+    static func spokenDistance(_ meters: Double) -> String {
+        if meters < 1_000 {
+            let rounded = max(10, Int((meters / 10).rounded()) * 10)
+            return "\(rounded) meters"
+        }
+        return String(format: "%.1f kilometers", meters / 1_000)
+    }
+
+    private static func appendArrivalIfNeeded(to maneuvers: inout [RouteManeuver], route: IncidentRouteResponse) {
+        guard let destination = route.coordinates.last else { return }
+        let last = maneuvers.last
+        let alreadyHasArrival = last?.instruction.localizedCaseInsensitiveContains("arriv") == true
+            && abs((last?.distanceFromStart ?? 0) - route.distanceMeters) < 15
+        guard !alreadyHasArrival else { return }
+        maneuvers.append(RouteManeuver(
+            id: "arrival-\(Int(route.distanceMeters.rounded()))",
+            instruction: route.endLabel?.nilIfBlank ?? "Arrive at your destination",
+            coordinate: destination,
+            distanceFromStart: route.distanceMeters,
+            distanceMeters: 0
+        ))
+    }
+}
+
+@MainActor
+private final class NavigationLocationDriver: NSObject, @preconcurrency CLLocationManagerDelegate {
+    var onLocation: ((CLLocation) -> Void)?
+    var onHeading: ((CLLocationDirection) -> Void)?
+    var onFailure: ((String) -> Void)?
+
+    private let manager = CLLocationManager()
+    private var wantsUpdates = false
+
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+        manager.distanceFilter = 3
+        manager.activityType = .automotiveNavigation
+        manager.pausesLocationUpdatesAutomatically = false
+        manager.allowsBackgroundLocationUpdates = true
+        manager.showsBackgroundLocationIndicator = true
+    }
+
+    func start() {
+        wantsUpdates = true
+        switch manager.authorizationStatus {
+        case .notDetermined:
+            manager.requestWhenInUseAuthorization()
+        case .authorizedAlways, .authorizedWhenInUse:
+            beginUpdates()
+        case .denied, .restricted:
+            onFailure?("Location permission is required for live navigation. Enable it in Settings and try again.")
+        @unknown default:
+            onFailure?("Location permission is unavailable.")
+        }
+    }
+
+    func stop() {
+        wantsUpdates = false
+        manager.stopUpdatingLocation()
+        manager.stopUpdatingHeading()
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        guard wantsUpdates else { return }
+        switch manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            beginUpdates()
+        case .denied, .restricted:
+            onFailure?("Location permission is required for live navigation. Enable it in Settings and try again.")
+        case .notDetermined:
+            break
+        @unknown default:
+            onFailure?("Location permission is unavailable.")
+        }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard wantsUpdates, let location = locations.last, location.horizontalAccuracy >= 0 else { return }
+        onLocation?(location)
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+        guard wantsUpdates, newHeading.headingAccuracy >= 0 else { return }
+        onHeading?(newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading)
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        guard (error as? CLError)?.code != .locationUnknown else { return }
+        onFailure?("Current location is unavailable: \(error.localizedDescription)")
+    }
+
+    private func beginUpdates() {
+        manager.startUpdatingLocation()
+        if CLLocationManager.headingAvailable() { manager.startUpdatingHeading() }
+    }
+}
+
+private extension String {
+    var nilIfBlank: String? {
+        let value = trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
     }
 }

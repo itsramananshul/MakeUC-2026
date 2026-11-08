@@ -68,11 +68,17 @@ struct IncidentBounds: Codable, Equatable {
     private var longitudeRange: ClosedRange<Double> { min(west, east)...max(west, east) }
 }
 
+struct IncidentImageryDetailTile: Codable, Equatable {
+    var url: String
+    var bounds: IncidentBounds
+}
+
 struct IncidentImagery: Codable, Equatable {
     var url: String
     var bounds: IncidentBounds
     var source: String
     var timestamp: String
+    var detailTiles: [IncidentImageryDetailTile]? = nil
 }
 
 struct Incident: Codable, Identifiable, Equatable {
@@ -147,6 +153,59 @@ struct IncidentRouteResponse: Codable, Equatable {
     var startLabel: String?
     var endLabel: String?
     var expectedTravelTime: Double? = nil
+    var maneuvers: [RouteManeuver]? = nil
+    var unverifiedSegments: [Int]? = nil
+
+    var hasUnverifiedSegments: Bool {
+        guard coordinates.count > 1 else { return false }
+        return unverifiedSegments?.contains(where: { coordinates.indices.dropLast().contains($0) }) == true
+    }
+}
+
+struct RouteManeuver: Codable, Equatable, Identifiable {
+    var id: String
+    var instruction: String
+    var coordinate: IncidentCoordinate
+    var distanceFromStart: Double
+    var distanceMeters: Double
+}
+
+struct NavigationProgress: Equatable {
+    var currentInstruction: String
+    var nextInstruction: String?
+    var distanceToManeuver: Double
+    var remainingDistance: Double
+    var remainingTime: TimeInterval?
+    var fractionComplete: Double
+    var distanceFromRoute: Double
+    var maneuverIndex: Int
+}
+
+enum NavigationSessionState: Equatable {
+    case idle
+    case awaitingLocation
+    case navigating(NavigationProgress)
+    case rerouting(NavigationProgress?)
+    case blocked(String)
+    case arrived
+
+    var progress: NavigationProgress? {
+        switch self {
+        case let .navigating(progress), let .rerouting(.some(progress)):
+            progress
+        case .idle, .awaitingLocation, .rerouting(nil), .blocked, .arrived:
+            nil
+        }
+    }
+
+    var keepsLocationTrackingActive: Bool {
+        switch self {
+        case .awaitingLocation, .navigating, .rerouting:
+            true
+        case .idle, .blocked, .arrived:
+            false
+        }
+    }
 }
 
 struct IncidentRoad: Codable, Identifiable, Equatable {

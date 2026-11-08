@@ -107,6 +107,16 @@ struct IncidentAPIClient {
         catch { throw AftermapAPIError.transport(error.localizedDescription) }
     }
 
+    func removeImagery(incidentId: String, key: String) async throws -> IncidentDetail {
+        let response: IncidentDetailResponse = try await send(
+            path: "api/incidents/\(escaped(incidentId))/imagery",
+            method: "DELETE",
+            body: Optional<String>.none,
+            bearer: key
+        )
+        return response.incident
+    }
+
     func importRoads(incidentId: String, key: String) async throws -> IncidentDetail {
         let response: IncidentDetailResponse = try await send(
             path: "api/incidents/\(escaped(incidentId))/roads",
