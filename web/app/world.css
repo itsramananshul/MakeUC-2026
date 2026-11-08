@@ -188,8 +188,46 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
   .world-app.with-world-sidebar { --map-obstruction: var(--sidebar-width); }
   .world-stage { position: absolute; inset: 0; z-index: 0; }
   .world-sidebar { height: 100%; background: rgb(230 237 241 / 78%); border-color: rgb(213 224 231 / 74%);
-    backdrop-filter: blur(22px) saturate(1.22); }
+    backdrop-filter: blur(6px); }
   .world-rail { background: rgb(207 222 232 / 35%); border-color: rgb(174 193 205 / 40%); }
+  .world-sidebar:has(~ .world-stage .world-basemap[aria-pressed="true"]) {
+    --world-text: #edf3f8;
+    --world-muted: #b3c2ce;
+    --world-line: rgb(173 195 212 / 21%);
+    --satellite-control: #20313e;
+    --satellite-hover: #2a4050;
+    --satellite-link: #96d0ff;
+    color: var(--world-text);
+    color-scheme: dark;
+    background: linear-gradient(90deg, rgb(13 27 38 / 87%) 0 88%, rgb(13 27 38 / 76%));
+    border-color: var(--world-line);
+    & .world-rail { background: rgb(7 18 27 / 40%); border-color: var(--world-line); }
+    & :is(.world-rail footer, .world-search, .direction-modes button, .route-maneuvers small, .world-route-result small, .road-matches small) {
+      color: var(--world-muted);
+    }
+    & :is(.world-search input, .road-finder input)::placeholder { color: var(--world-muted); }
+    & :is(a, button.world-text, .world-result svg, .world-section h2 svg) { color: var(--satellite-link); }
+    & :is(.world-search, .world-place, .direction-stops, .route-maneuvers, .world-secondary, .selected-road, .world-route-result,
+        .road-finder input, .direction-card, .direction-modes button, .rail-item span) {
+      background-color: var(--satellite-control); border-color: var(--world-line);
+    }
+    & .stop-finder .world-search { background: transparent; }
+    & .world-search:focus-within { border-color: var(--satellite-link); }
+    & :is(.stop-finder + .stop-finder, .route-maneuvers li + li, .direction-utilities button, .road-matches button) {
+      border-color: var(--world-line);
+    }
+    & :is(.rail-item:hover, .rail-item[aria-current="page"], .world-search button:hover, .world-result:hover, .incident-list button:hover,
+        .world-secondary:hover, .world-reports li.is-selected, .road-matches button:hover) { background-color: var(--satellite-hover); }
+    & :is(.rail-item span, .direction-card, .road-finder input) { color: var(--world-text); }
+    & :is(.rail-item[aria-current="page"] span, .direction-modes button[aria-pressed="true"], .direction-card[data-selected="true"]) {
+      color: #fff; background-color: #086bcf;
+    }
+    & .world-action-row .world-secondary[aria-pressed="true"] { color: #c9e8ff; background-color: #21485f; }
+    & .world-route-result.partial { background-color: #4c381f; }
+    & :is(.incident-error, .sidebar-status.incident-error) { color: #ffc2c8; }
+    & .sidebar-status { color: #c8e5f6; background-color: #203a4c; }
+    & .sidebar-status.incident-error { background-color: #502833; }
+  }
   .world-picking, .world-map-error { left: calc((100% + var(--map-obstruction, 0px)) / 2); }
   .world-legend { left: calc(var(--map-obstruction, 0px) + 12px);
     max-width: calc(100% - var(--map-obstruction, 0px) - 24px); }
