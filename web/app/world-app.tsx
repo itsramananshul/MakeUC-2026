@@ -498,7 +498,7 @@ export default function WorldApp() {
     <section id="map-view" className="world-stage" aria-label="Map">
       <WorldMap incidents={incidents} active={active} focus={focus} route={visibleRoute}
         start={tripOpen ? start : null} destination={tripOpen ? destination : place}
-        selectedRoad={roadId} aerial={aerial} picking={!!picking} onCamera={setCamera}
+        selectedRoad={roadId} aerial={aerial} picking={!!picking} sidebarVisible={sidebar} onCamera={setCamera}
         onPoint={choosePoint} onRoad={selectRoad} onIncident={chooseIncident} onReport={selectReport} />
       {!sidebar && <button className="world-restore circle-button" aria-label="Show sidebar" onClick={() => setSidebar(true)}><PanelLeft size={18} /></button>}
       {picking && <div className="world-picking" role="status">{pickLabel}<button type="button" className="world-text" onClick={() => choosePoint(camera.center)}>Use map center</button><button type="button" className="circle-button" aria-label="Cancel map selection" onClick={() => { setPicking(null); setPoints([]); }}><X size={16} /></button></div>}

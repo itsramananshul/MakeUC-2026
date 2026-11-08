@@ -14,6 +14,7 @@ type Props = {
   onCamera: (camera: Camera) => void; onPoint: (point: Coordinate) => void;
   onRoad: (id: string) => void; onIncident: (id: string) => void;
   onReport?: (id: string) => void;
+  sidebarVisible?: boolean;
   incidentPreview?: { center: Coordinate; bounds: GeographicBounds } | null;
 };
 const style = "https://tiles.openfreemap.org/styles/liberty";
@@ -159,6 +160,23 @@ export default function WorldMap(props: Props) {
       if (view.getLayer(layer)) view.setLayoutProperty(layer, "visibility", satellite ? "visible" : "none");
     }
   }, [ready, satellite]);
+
+  useEffect(() => {
+    const view = map.current;
+    if (!ready || !view || props.sidebarVisible === undefined) return;
+    const sidebar = props.sidebarVisible ? host.current?.closest(".world-app")?.querySelector(".world-sidebar") : null;
+    const desktop = matchMedia("(min-width: 741px)");
+    function resizePadding() {
+      if (!view) return;
+      const left = desktop.matches && sidebar ? Math.ceil(sidebar.getBoundingClientRect().width) : 0;
+      if (view.getPadding().left !== left) view.setPadding({ left, top: 0, right: 0, bottom: 0 });
+    }
+    const observer = new ResizeObserver(resizePadding);
+    if (sidebar) observer.observe(sidebar);
+    desktop.addEventListener("change", resizePadding);
+    resizePadding();
+    return () => { observer.disconnect(); desktop.removeEventListener("change", resizePadding); };
+  }, [ready, props.sidebarVisible]);
 
   useEffect(() => {
     if (!ready || !map.current || !props.focus) return;
