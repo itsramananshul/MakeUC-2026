@@ -14,6 +14,7 @@ type Props = {
   onCamera: (camera: Camera) => void; onPoint: (point: Coordinate) => void;
   onRoad: (id: string) => void; onIncident: (id: string) => void;
   onReport?: (id: string) => void;
+  sidebarVisible?: boolean;
   incidentPreview?: { center: Coordinate; bounds: GeographicBounds } | null;
 };
 const style = "https://tiles.openfreemap.org/styles/liberty";
@@ -161,6 +162,23 @@ export default function WorldMap(props: Props) {
   }, [ready, satellite]);
 
   useEffect(() => {
+    const view = map.current;
+    if (!ready || !view || props.sidebarVisible === undefined) return;
+    const sidebar = props.sidebarVisible ? host.current?.closest(".world-app")?.querySelector(".world-sidebar") : null;
+    const desktop = matchMedia("(min-width: 741px)");
+    function resizePadding() {
+      if (!view) return;
+      const left = desktop.matches && sidebar ? Math.ceil(sidebar.getBoundingClientRect().width) : 0;
+      if (view.getPadding().left !== left) view.setPadding({ left, top: 0, right: 0, bottom: 0 });
+    }
+    const observer = new ResizeObserver(resizePadding);
+    if (sidebar) observer.observe(sidebar);
+    desktop.addEventListener("change", resizePadding);
+    resizePadding();
+    return () => { observer.disconnect(); desktop.removeEventListener("change", resizePadding); };
+  }, [ready, props.sidebarVisible]);
+
+  useEffect(() => {
     if (!ready || !map.current || !props.focus) return;
     const view = map.current;
     const duration = inputs.current.incidentPreview !== undefined || matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 700;
@@ -203,11 +221,13 @@ export default function WorldMap(props: Props) {
   useEffect(() => {
     const view = map.current;
     if (!view || !ready || !images.length) return;
+    const surveyBefore = view.getLayer(satelliteRoadLayer(satelliteRoads[0])) ? satelliteRoadLayer(satelliteRoads[0]) :
+      view.getLayer("waterway_line_label") ? "waterway_line_label" : "incident-boundary-fill";
     const layerIds = images.map((image, index) => {
       const id = `after-survey-${index}`;
       const [w, s, e, n] = boundsTuple(image.bounds);
       view.addSource(id, { type: "image", url: image.url, coordinates: [[w, n], [e, n], [e, s], [w, s]] });
-      view.addLayer({ id, type: "raster", source: id, paint: { "raster-fade-duration": 0 } }, "incident-boundary-fill");
+      view.addLayer({ id, type: "raster", source: id, paint: { "raster-fade-duration": 0 } }, surveyBefore);
       return id;
     });
     return () => {

@@ -22,6 +22,7 @@ export type RouteOption = {
 export type IncidentRoute = {
   status: "complete" | "partial" | "unavailable"; coordinates: Coordinate[]; distanceMeters: number;
   reason: string; startLabel?: string; endLabel?: string; options?: RouteOption[];
+  incidentId?: string; expectedTravelTime?: number;
 };
 export const coordinateKey = (point: Coordinate) => `${point.longitude.toFixed(7)},${point.latitude.toFixed(7)}`;
 export const lngLat = (point: Coordinate): [number, number] => [point.longitude, point.latitude];

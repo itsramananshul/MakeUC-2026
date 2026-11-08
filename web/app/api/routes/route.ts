@@ -13,13 +13,15 @@ export async function POST(request: Request) {
     if (active) {
       if (mode !== "walking") return json({ status: "unavailable", coordinates: [], distanceMeters: 0,
         reason: "Only verified walking passages are available inside this incident. Switch to Walk." });
-      return json(incidentRoute(getIncident(active.id), origin, destination));
+      return json(incidentRoute(getIncident(active.id), origin, destination, incidents));
     }
     if (incidents.some(incident => within(origin, incident.bounds) || within(destination, incident.bounds))) {
       return json({ status: "unavailable", coordinates: [], distanceMeters: 0,
         reason: active ? "Switch to walking to route along reported passages in this incident." :
           "This trip crosses an incident boundary. Open the incident to check its reported passages." });
     }
+    if (mode === "transit") return json({ status: "unavailable", coordinates: [], distanceMeters: 0,
+      reason: "Transit routing is currently unavailable. Choose Drive, Walk, or Bike." });
     return json(await standardRoute(origin, destination, incidents, mode));
   } catch (error) { return failure(error); }
 }
