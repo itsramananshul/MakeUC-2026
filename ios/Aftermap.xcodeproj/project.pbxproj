@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		7A783F52142A4BDA96D0C3E1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7A783F52142A4BDA96D0C3E2 /* Assets.xcassets */; };
 		11E228F8F46F9E4E3B49CCB6 /* AftermapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16B8DC67E789D6D2FD352969 /* AftermapTests.swift */; };
 		26576F94855EDE3ECF416D5B /* ReportFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3711A09D0E7D4B10AA387BC4 /* ReportFlowView.swift */; };
 		2C811786AD23E3B64AFA012A /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BC429A58DFB7EBA608E549F /* SessionStore.swift */; };
@@ -20,6 +19,7 @@
 		88566C4D95C0739D638CAB17 /* CaptureTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20F68C6900E0126A99E7379 /* CaptureTools.swift */; };
 		A72D64C817A4AB41C7A9B756 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 771EC1A60DC46BBEEB88503B /* Models.swift */; };
 		B47A4A8F7FFEC79004EE30C2 /* MapLibreWorldMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26270C47314D796E97481573 /* MapLibreWorldMap.swift */; };
+		BAAA4167BE4AE5C609D44C4E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D95B9A8273CC1913AA8FFBDE /* Assets.xcassets */; };
 		CE3BD211BC4AAB78A2B9C788 /* IncidentAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DE998EC3BAD92FABAC158CF /* IncidentAPIClient.swift */; };
 		CEDF8DA6D6D363442462546B /* LiveMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91CC18DE95F66286F4CD570F /* LiveMapView.swift */; };
 		D76022B64A2C507BE0063C62 /* FieldSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDCB0D5B415863ECEA04F01F /* FieldSessionView.swift */; };
@@ -46,7 +46,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		7A783F52142A4BDA96D0C3E2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		16B8DC67E789D6D2FD352969 /* AftermapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AftermapTests.swift; sourceTree = "<group>"; };
 		170F548426782565848D574D /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		1A71374C609DD9217768334B /* AftermapTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = AftermapTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -66,6 +65,7 @@
 		B85F4C6DD1F0CCB9D6BB057B /* IncidentModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IncidentModels.swift; sourceTree = "<group>"; };
 		CA1D7399953B5A2CA3698307 /* WorldMapStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorldMapStore.swift; sourceTree = "<group>"; };
 		CDCB0D5B415863ECEA04F01F /* FieldSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldSessionView.swift; sourceTree = "<group>"; };
+		D95B9A8273CC1913AA8FFBDE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D97E8B02452983F55841F551 /* IncidentPhotoPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IncidentPhotoPicker.swift; sourceTree = "<group>"; };
 		FC2AC0227BBAC95F68231A82 /* AftermapUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = AftermapUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -87,7 +87,7 @@
 			children = (
 				54D95E8ED582545650F1404C /* AftermapApp.swift */,
 				1CD38EEAC0208C87EF1A2F08 /* APIClient.swift */,
-				7A783F52142A4BDA96D0C3E2 /* Assets.xcassets */,
+				D95B9A8273CC1913AA8FFBDE /* Assets.xcassets */,
 				B20F68C6900E0126A99E7379 /* CaptureTools.swift */,
 				CDCB0D5B415863ECEA04F01F /* FieldSessionView.swift */,
 				3DE998EC3BAD92FABAC158CF /* IncidentAPIClient.swift */,
@@ -150,8 +150,8 @@
 			buildConfigurationList = B6958AA7AF76FF43C60AF18D /* Build configuration list for PBXNativeTarget "Aftermap" */;
 			buildPhases = (
 				94F7AE88834C1A9657C16BC2 /* Sources */,
+				DA014D321B2F9545708F8420 /* Resources */,
 				4DEC58F9C1687B31504D35C7 /* Frameworks */,
-				7A783F52142A4BDA96D0C3E3 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -248,11 +248,11 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		7A783F52142A4BDA96D0C3E3 /* Resources */ = {
+		DA014D321B2F9545708F8420 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				7A783F52142A4BDA96D0C3E1 /* Assets.xcassets in Resources */,
+				BAAA4167BE4AE5C609D44C4E /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
