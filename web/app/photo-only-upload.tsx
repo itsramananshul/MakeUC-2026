@@ -11,21 +11,20 @@ type ImportResult =
   | { status: "failed"; error?: string }
   | { status: "complete"; incident: Incident; key: string };
 const endpoint = "/api/imagery/import";
-const city = "/venezuela/catia-la-mar";
+const city = "/?place=catia-la-mar";
 const pendingImport = "gaslight-aerial-import";
 const catalogHashes: Record<string, string> = hashes;
 
 async function identifyFiles(files: File[]) {
-  const found = new Set<string>();
   let matched = 0;
   for (const file of files) {
     if (file.size > 16_000_000 || /\.tiff?$/i.test(file.name)) continue;
     const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
     const hex = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
     const tile = catalogHashes[hex];
-    if (tile) { found.add(tile); matched++; }
+    if (tile) matched++;
   }
-  return { matched, tiles: [...found] };
+  return matched;
 }
 
 async function importRequest(path: string, body?: FormData, key?: string) {
@@ -81,9 +80,9 @@ export default function PhotoOnlyUpload({ onImport }: { onImport: (incident: Inc
     setBusy(true); setError(""); setStatus("Checking image locations…");
     try {
       if (files.length > maxGeoTiffs) throw new Error("Choose up to 100 prepared images at a time.");
-      const { matched, tiles } = await identifyFiles(files);
+      const matched = await identifyFiles(files);
       if (matched === files.length) {
-        window.location.assign(`${city}?tiles=${encodeURIComponent(tiles.join(","))}`);
+        window.location.assign(city);
         return;
       }
       if (matched) throw new Error("Some files are from the prepared Catia La Mar set. Select those separately from other imagery.");

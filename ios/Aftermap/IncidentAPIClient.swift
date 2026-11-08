@@ -47,10 +47,6 @@ struct IncidentAPIClient {
         return response.places
     }
 
-    func aerialImageryCatalog(id: String) async throws -> AerialImageryCatalog {
-        try await send(path: "api/imagery/catalog/\(escaped(id))", method: "GET", body: Optional<String>.none)
-    }
-
     func ordinaryRoute(
         origin: IncidentCoordinate,
         destination: IncidentCoordinate,

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Layers2, Satellite } from "lucide-react";
 import { Map as MapLibreMap, NavigationControl, ScaleControl, setWorkerUrl, type GeoJSONSource, type Map as MapInstance } from "maplibre-gl";
 import type { Feature, FeatureCollection, Geometry, LineString } from "geojson";
-import { boundsTuple, incidentCoverage, lngLat, roadPoints, type Coordinate, type GeographicBounds, type Incident, type IncidentImagery, type IncidentRoute, type IncidentSummary, type SurveyRaster } from "@/lib/incident-types";
+import { boundsTuple, incidentCoverage, incidentExtent, lngLat, roadPoints, type Coordinate, type GeographicBounds, type Incident, type IncidentImagery, type IncidentRoute, type IncidentSummary, type SurveyRaster } from "@/lib/incident-types";
 
 type Camera = { center: Coordinate; zoom: number };
 type Focus = { point: Coordinate; zoom?: number } | { bounds: GeographicBounds };
@@ -77,9 +77,9 @@ function addLayers(map: MapInstance, satellite: boolean) {
     map.addSource(id, { type: "geojson", data: collection() });
   }
   map.addLayer({ id: "incident-boundary-fill", type: "fill", source: "boundaries",
-    paint: { "fill-color": "#de801a", "fill-opacity": .07 } });
+    paint: { "fill-color": "#de801a", "fill-opacity": ["case", ["has", "outline"], 0, .07] } });
   map.addLayer({ id: "incident-boundary-line", type: "line", source: "boundaries",
-    paint: { "line-color": "#c75a12", "line-width": 2, "line-dasharray": [3, 2] } });
+    paint: { "line-color": ["coalesce", ["get", "outline"], "#c75a12"], "line-width": 2, "line-dasharray": [3, 2] } });
   map.addLayer({ id: "incident-roads-hit", type: "line", source: "roads", paint: { "line-width": 20, "line-opacity": 0 } });
   map.addLayer({ id: "incident-roads", type: "line", source: "roads", layout: { "line-cap": "round", "line-join": "round" },
     paint: {
@@ -267,7 +267,11 @@ export default function WorldMap(props: Props) {
     set("boundaries", props.incidentPreview ? [polygon(props.incidentPreview.bounds, { id: "preview" })] :
       [...others, ...(active ? [active] : [])].flatMap(item => {
         const areas = incidentCoverage(item);
-        return (areas.length > 1 ? areas.slice(1) : areas).map(bounds => polygon(bounds, { id: item.id }));
+        const visibleAreas = areas.length > 1 ? areas.slice(1) : areas;
+        if (item.name === "Catia La Mar" && item.imagery) {
+          return [polygon(incidentExtent(item), { id: item.id, outline: "#ed3348" })];
+        }
+        return visibleAreas.map(bounds => polygon(bounds, { id: item.id }));
       }));
     set("roads", (active?.roads ?? []).map(road => ({
       type: "Feature", geometry: { type: "LineString", coordinates: roadPoints(road).map(lngLat) },

@@ -43,9 +43,15 @@ function init() {
   return db;
 }
 
+function mapName(name: string) {
+  if (name === "Catia La Mar exercise (simulated imagery)") return "Catia La Mar";
+  if (name.startsWith("Cincinnati flood exercise")) return "Cincinnati";
+  return name;
+}
+
 function summary(incident: StoredIncident): IncidentSummary {
   const { roads, reports, unpublishedSurveys, ...result } = incident;
-  return { ...result, roadCount: roads.length };
+  return { ...result, name: mapName(result.name), roadCount: roads.length };
 }
 export function incidentList(): IncidentSummary[] {
   return init().prepare("SELECT details FROM incidents WHERE json_extract(details, '$.resolvedAt') IS NULL ORDER BY rowid DESC").all()
@@ -61,7 +67,16 @@ function loadIncident(id: string): StoredIncident {
   return JSON.parse(row.details as string) as StoredIncident;
 }
 function publicIncident({ unpublishedSurveys, ...incident }: StoredIncident): Incident {
-  return incident;
+  const name = mapName(incident.name);
+  if (name !== "Catia La Mar" && name !== "Cincinnati") return incident;
+  return {
+    ...incident, name,
+    reports: incident.reports.map(report => report.id.startsWith("cincinnati-imagery-exercise-")
+      ? { ...report, displayName: name, note: report.condition === "open" ? "Reported walking passage." :
+        incident.roads.find(road => road.id === report.edgeId)?.label === "Fallen tree" ? "Fallen tree blocking the road." :
+          "Obstruction reported on the road." }
+      : report),
+  };
 }
 export function getIncident(id: string): Incident {
   return publicIncident(loadIncident(id));

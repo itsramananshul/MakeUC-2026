@@ -38,13 +38,6 @@ struct RootView: View {
                     navigationBanner
                 } else if let mode = store.selectionMode {
                     selectionBanner(mode)
-                } else if let catalog = store.aerialCatalog, store.mapStyle == .satellite {
-                    Text(catalog.imagery.source)
-                        .font(.caption.weight(.medium))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(.regularMaterial, in: Capsule())
-                        .accessibilityIdentifier("catalog.imagerySource")
                 } else if case let .stale(message) = store.connection {
                     staleBanner(message)
                 }
@@ -688,23 +681,6 @@ struct RootView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("place.more")
-            }
-            if WorldMapStore.aerialCatalogID(for: place) != nil {
-                Button {
-                    Task {
-                        if await store.toggleAerialCatalog(for: place) {
-                            dashboardDetent = Self.compactDashboardDetent
-                        }
-                    }
-                } label: {
-                    Label(
-                        store.aerialCatalog == nil ? "View aerial imagery" : "Hide aerial imagery",
-                        systemImage: "photo.on.rectangle"
-                    )
-                }
-                .buttonStyle(.bordered)
-                .disabled(store.isLoadingAerialCatalog)
-                .accessibilityIdentifier("place.aerialImagery")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

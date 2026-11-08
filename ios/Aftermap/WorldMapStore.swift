@@ -54,8 +54,6 @@ final class WorldMapStore: ObservableObject {
     @Published var serverURL: String
     @Published private(set) var incidents: [Incident] = []
     @Published private(set) var recoveryImagery: [IncidentImagery] = []
-    @Published private(set) var aerialCatalog: AerialImageryCatalog?
-    @Published private(set) var isLoadingAerialCatalog = false
     @Published private(set) var selectedIncident: Incident?
     @Published private(set) var incidentDetail: IncidentDetail?
     @Published var selectedRoad: IncidentRoad?
@@ -427,7 +425,6 @@ final class WorldMapStore: ObservableObject {
 
     func choosePlace(_ place: PlaceResult) {
         rememberPlace(place)
-        if aerialCatalog?.place.id != place.id { aerialCatalog = nil }
         searchRevision += 1
         selectedPlace = place
         query = place.name
@@ -439,10 +436,7 @@ final class WorldMapStore: ObservableObject {
 
     func queryDidChange() {
         let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if selectedPlace?.name != term {
-            selectedPlace = nil
-            aerialCatalog = nil
-        }
+        if selectedPlace?.name != term { selectedPlace = nil }
     }
 
     func clearSearch() {
@@ -450,37 +444,8 @@ final class WorldMapStore: ObservableObject {
         query = ""
         places = []
         selectedPlace = nil
-        aerialCatalog = nil
         isSearching = false
         searchMessage = nil
-    }
-
-    static func aerialCatalogID(for place: PlaceResult) -> String? {
-        place.id == "canonical-ve-catia-la-mar" ? "catia-la-mar" : nil
-    }
-
-    func toggleAerialCatalog(for place: PlaceResult) async -> Bool {
-        guard let id = Self.aerialCatalogID(for: place), !isLoadingAerialCatalog else { return false }
-        if aerialCatalog?.id == id {
-            aerialCatalog = nil
-            return false
-        }
-        isLoadingAerialCatalog = true
-        defer { isLoadingAerialCatalog = false }
-        do {
-            let catalog = try await client.aerialImageryCatalog(id: id)
-            guard selectedPlace?.id == place.id else { return false }
-            guard catalog.id == id, catalog.place == place else {
-                throw AftermapAPIError.invalidResponse
-            }
-            mapStyle = .satellite
-            aerialCatalog = catalog
-            focus(on: IncidentCoordinate(catalog.coverage.center), zoom: 14)
-            return true
-        } catch {
-            notice = error.localizedDescription
-            return false
-        }
     }
 
     func useSelectedPlaceAsDestination() {

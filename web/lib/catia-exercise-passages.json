@@ -1,5 +1,5 @@
 {
-  "centralHash": "910f1606ec7ff918e4166e323465feaf28beb7cf2c82c9456b7d642db1847898",
+  "centralHash": "4dd9f572bccfb45185f32d399517f7a5d3e6d15ecf783b1c123bcdcfb73b2746",
   "roads": [
     {
       "id": "field-catia-exercise-side-street",
@@ -44,6 +44,177 @@
         {
           "latitude": 10.59929948237091,
           "longitude": -67.0174614242018
+        }
+      ]
+    },
+    {
+      "id": "field-catia-central-trees",
+      "label": "Fallen tree",
+      "state": "blocked",
+      "from": {
+        "latitude": 10.59676953508069,
+        "longitude": -67.01578876114279
+      },
+      "to": {
+        "latitude": 10.596595055186778,
+        "longitude": -67.0147783361112
+      },
+      "via": [
+        {
+          "latitude": 10.59671584897007,
+          "longitude": -67.01544057413865
+        }
+      ]
+    },
+    {
+      "id": "field-catia-north-trees",
+      "label": "Fallen trees",
+      "state": "blocked",
+      "from": {
+        "latitude": 10.608204462078561,
+        "longitude": -67.02408380447633
+      },
+      "to": {
+        "latitude": 10.607137488724494,
+        "longitude": -67.02407015008403
+      },
+      "via": [
+        {
+          "latitude": 10.607667620604541,
+          "longitude": -67.02407697728019
+        }
+      ]
+    },
+    {
+      "id": "field-catia-north-rubble",
+      "label": "Building debris",
+      "state": "blocked",
+      "from": {
+        "latitude": 10.60673485630309,
+        "longitude": -67.02176255778218
+      },
+      "to": {
+        "latitude": 10.606533539893693,
+        "longitude": -67.02128465405103
+      },
+      "via": [
+        {
+          "latitude": 10.606647619208616,
+          "longitude": -67.02150995152428
+        }
+      ]
+    },
+    {
+      "id": "field-catia-south-rubble",
+      "label": "Building debris",
+      "state": "blocked",
+      "from": {
+        "latitude": 10.605473271285023,
+        "longitude": -67.02324405934876
+      },
+      "to": {
+        "latitude": 10.60543971842098,
+        "longitude": -67.02213122637478
+      },
+      "via": [
+        {
+          "latitude": 10.60544642899408,
+          "longitude": -67.0227320196368
+        }
+      ]
+    },
+    {
+      "id": "field-catia-west-upper-rubble",
+      "label": "Building debris and fallen trees",
+      "state": "blocked",
+      "from": {
+        "latitude": 10.600655042344544,
+        "longitude": -67.0246777705422
+      },
+      "to": {
+        "latitude": 10.600346350997132,
+        "longitude": -67.02342839364505
+      },
+      "via": [
+        {
+          "latitude": 10.600507407391138,
+          "longitude": -67.02413159484945
+        }
+      ]
+    },
+    {
+      "id": "field-catia-west-connector-tree",
+      "label": "Fallen trees",
+      "state": "blocked",
+      "from": {
+        "latitude": 10.59905789679499,
+        "longitude": -67.02258864851746
+      },
+      "to": {
+        "latitude": 10.59892368250378,
+        "longitude": -67.02192641049
+      },
+      "via": [
+        {
+          "latitude": 10.599004211085562,
+          "longitude": -67.02232238786723
+        }
+      ]
+    },
+    {
+      "id": "field-catia-west-lower-tree",
+      "label": "Fallen tree",
+      "state": "blocked",
+      "from": {
+        "latitude": 10.597037965492598,
+        "longitude": -67.0217079402129
+      },
+      "to": {
+        "latitude": 10.596709138205584,
+        "longitude": -67.02159870507435
+      },
+      "via": [
+        {
+          "latitude": 10.596897039555683,
+          "longitude": -67.02161235946666
+        }
+      ]
+    },
+    {
+      "id": "field-catia-south-bend-tree",
+      "label": "Fallen tree",
+      "state": "blocked",
+      "from": {
+        "latitude": 10.592514881637344,
+        "longitude": -67.0183011693294
+      },
+      "to": {
+        "latitude": 10.592065253925247,
+        "longitude": -67.01814414381774
+      },
+      "via": [
+        {
+          "latitude": 10.592280001571549,
+          "longitude": -67.01821924297549
+        }
+      ]
+    },
+    {
+      "id": "field-catia-south-center-rubble",
+      "label": "Building debris",
+      "state": "blocked",
+      "from": {
+        "latitude": 10.592179338631086,
+        "longitude": -67.01761162251732
+      },
+      "to": {
+        "latitude": 10.591816951771582,
+        "longitude": -67.01718150915927
+      },
+      "via": [
+        {
+          "latitude": 10.592018277857555,
+          "longitude": -67.01745459700565
         }
       ]
     }

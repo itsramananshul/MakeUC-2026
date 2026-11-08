@@ -145,8 +145,14 @@ export default function WorldApp() {
     });
   }
   useEffect(() => {
-    const id = new URLSearchParams(location.search).get("incident") ?? "";
+    const params = new URLSearchParams(location.search);
+    const id = params.get("incident") ?? "";
     if (id) { setSelected(id); setSheet(1); }
+    else if (params.get("place") === catia.id) {
+      setPlace(catia.place);
+      setFocus({ bounds: catia.coverage });
+      setSheet(1);
+    }
     void refreshList().catch(error => setError(getMessage(error)));
     const stream = typeof EventSource !== "undefined" ? new EventSource("/api/incidents/updates") : null;
     updates.current = stream;
@@ -242,7 +248,7 @@ export default function WorldApp() {
 
   function choosePlace(item: Place) {
     setPlace(item); setTripOpen(false); setIncidentPanel(false); setPicking(null); resetRoute(); setMessage("");
-    setFocus({ point: item, zoom: 15 });
+    setFocus(item.id === catia.place.id ? { bounds: catia.coverage } : { point: item, zoom: 15 });
     setSheet(1);
     if (mobileSearch) closeMobileSearch();
   }
@@ -494,9 +500,6 @@ export default function WorldApp() {
               <button className="world-primary" type="button" onClick={() => startTrip(place)}><Route size={15} /> Directions</button>
               {!active && <button className="world-secondary" type="button" onClick={() => { setPicking(null); setModal("create"); }}><Plus size={15} /> Report here</button>}
             </div>
-            {place.id === catia.place.id && <a className="world-text" href="/venezuela/catia-la-mar">View aerial imagery</a>}
-            {(place.name === "Venezuela" || /(?:^|,\s*)Venezuela$/i.test(place.detail)) &&
-              <a className="world-text" href="/venezuela">June 2026 earthquake imagery</a>}
           </div>}
           <section className="mobile-map-tools" aria-label="Map tools">
             <h2>Map tools</h2>
@@ -637,7 +640,7 @@ export default function WorldApp() {
             <button className="world-secondary" type="button" onClick={() => setAerial(!aerial)} aria-pressed={aerial}><Satellite size={16} /> Aerial view</button>
             <button className="world-secondary" type="button" onClick={() => needAccess(() => setModal("survey"))}><Layers3 size={16} /> Add imagery</button>
           </div>
-          {aerial && active.imagery && <small className="world-attribution">{active.imagery.source}</small>}
+          {aerial && active.imagery && <small className="world-attribution">{active.name === "Catia La Mar" || active.name === "Cincinnati" ? "Aerial survey" : active.imagery.source}</small>}
           {active.imagery && <>
             <div className="world-action-row">
               <button className="world-secondary" type="button" disabled={scanningAerial}

@@ -87,7 +87,6 @@ struct MapLibreWorldMap: UIViewRepresentable {
         private var isStyleReady = false
         private var renderedStaticSignature = ""
         private var renderedDynamicSignature = ""
-        private var renderedCatalogIDs: [String] = []
         private var baseStyleURL: URL
         var onMapTap: ((CLLocationCoordinate2D) -> Void)?
 
@@ -122,10 +121,6 @@ struct MapLibreWorldMap: UIViewRepresentable {
             guard reason.rawValue & UInt(gestureMask) != 0 else { return }
             store.suspendNavigationCameraFollowing()
             mapView.userTrackingMode = .none
-        }
-
-        func mapView(_ mapView: MLNMapView, regionDidChangeAnimated animated: Bool) {
-            if isStyleReady, let style = mapView.style { refreshCatalog(in: style) }
         }
 
         func mapView(_ mapView: MLNMapView, didUpdate userLocation: MLNUserLocation?) {
@@ -182,14 +177,11 @@ struct MapLibreWorldMap: UIViewRepresentable {
             if staticSignature != renderedStaticSignature {
                 renderedStaticSignature = staticSignature
                 renderedDynamicSignature = ""
-                renderedCatalogIDs = []
                 removeAftermapContent(from: style)
                 configureBaseMap(in: style)
                 addImagery(to: style)
                 addIncidents(to: style)
             }
-
-            refreshCatalog(in: style)
 
             let dynamicSignature = dynamicStyleSignature
             guard dynamicSignature != renderedDynamicSignature else { return }
@@ -329,39 +321,6 @@ struct MapLibreWorldMap: UIViewRepresentable {
                 .sorted { $0.timestamp < $1.timestamp }
             var seenURLs = Set<String>()
             return ordered.filter { seenURLs.insert($0.url).inserted }
-        }
-
-        private func refreshCatalog(in style: MLNStyle) {
-            let prefix = "aftermap-catalog-"
-            var rasters: [IncidentImageryDetailTile] = []
-            if onMapTap == nil, store.mapStyle == .satellite, let map = mapView,
-               map.zoomLevel >= 9, let image = store.aerialCatalog?.imagery {
-                let visible = map.visibleCoordinateBounds
-                func intersects(_ bounds: IncidentBounds) -> Bool {
-                    bounds.west <= visible.ne.longitude && bounds.east >= visible.sw.longitude
-                        && bounds.south <= visible.ne.latitude && bounds.north >= visible.sw.latitude
-                }
-                if intersects(image.bounds) {
-                    rasters.append(IncidentImageryDetailTile(url: image.url, bounds: image.bounds))
-                }
-                rasters += (image.detailTiles ?? []).filter { intersects($0.bounds) }
-            }
-            func key(_ raster: IncidentImageryDetailTile) -> String { prefix + raster.url }
-            let ids = rasters.map(key)
-            guard ids != renderedCatalogIDs else { return }
-            renderedCatalogIDs = ids
-            let needed = Set(ids)
-            for layer in style.layers where layer.identifier.hasPrefix(prefix) && !needed.contains(layer.identifier) {
-                style.removeLayer(layer)
-                if let source = style.source(withIdentifier: layer.identifier) { style.removeSource(source) }
-            }
-            for raster in rasters {
-                let id = key(raster)
-                guard style.layer(withIdentifier: id) == nil,
-                      let url = store.client.resolvedURL(raster.url) else { continue }
-                addImageryLayer(to: style, sourceID: id, layerID: id, url: url,
-                                bounds: raster.bounds, opacity: 1, minimumZoom: 9, maximumZoom: 24)
-            }
         }
 
         private func addSurvey(_ imagery: IncidentImagery, namespace: String, to style: MLNStyle) {
