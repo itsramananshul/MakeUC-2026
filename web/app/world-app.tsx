@@ -1,14 +1,15 @@
 "use client";
 
 import {
-  ArrowLeft, ArrowRight, ChevronRight, Crosshair, Footprints, Globe, KeyRound, Layers3,
+  ArrowDownUp, ArrowLeft, ArrowRight, Bike, CarFront, ChevronRight, Crosshair, Footprints, Globe, KeyRound, Layers3,
   MapPin, PanelLeft, Plus, Route, Satellite, Search, ShieldAlert, X,
 } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useState, type FormEvent } from "react";
-import { distanceMeters, within, type Coordinate, type GeographicBounds, type Incident, type IncidentRoute, type IncidentSummary, type Place } from "@/lib/incident-types";
+import { distanceMeters, within, type Coordinate, type GeographicBounds, type Incident, type IncidentRoute, type IncidentSummary, type Place, type TravelMode } from "@/lib/incident-types";
 import { fetchJson, incidentPath, postJson } from "@/lib/world-client";
 import { AccessKey, CreateIncident, Modal, ReportIncident, SurveyUpload } from "./incident-dialogs";
+import DirectionsField, { type TripPoint } from "./directions-field";
 import WorldMap from "./world-map";
 
 type Focus = { point: Coordinate; zoom?: number } | { bounds: GeographicBounds };
@@ -16,9 +17,27 @@ type Picking = "start" | "destination" | "point" | "connection" | null;
 type ModalKind = "create" | "access" | "report" | "survey" | null;
 const labels = { unknown: "Unverified", open: "Reported open", blocked: "Blocked", hazard: "Hazard", conflict: "Disputed" };
 const earth = { latitude: 24, longitude: 0 };
-const endpointLabel = (point: Coordinate) => `${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)}`;
 const accessStorage = (id: string) => `aftermap.access.${id}`;
 const getMessage = (error: unknown) => error instanceof Error ? error.message : "Something went wrong.";
+const travelModes = [
+  { mode: "driving", label: "Drive", icon: CarFront },
+  { mode: "walking", label: "Walk", icon: Footprints },
+  { mode: "cycling", label: "Cycle", icon: Bike },
+] as const;
+const formatDistance = (meters: number) => meters >= 1000
+  ? `${(meters / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })} km`
+  : `${meters.toLocaleString()} m`;
+function formatDuration(seconds: number) {
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} hr ${minutes % 60} min`;
+}
+function routeBounds(points: Coordinate[]): GeographicBounds {
+  const first = points[0];
+  return points.reduce((bounds, point) => ({
+    west: Math.min(bounds.west, point.longitude), east: Math.max(bounds.east, point.longitude),
+    south: Math.min(bounds.south, point.latitude), north: Math.max(bounds.north, point.latitude),
+  }), { west: first.longitude, east: first.longitude, south: first.latitude, north: first.latitude });
+}
 
 export default function WorldApp() {
   const [incidents, setIncidents] = useState<IncidentSummary[]>([]);
@@ -31,12 +50,15 @@ export default function WorldApp() {
   const [place, setPlace] = useState<Place | null>(null);
   const [searching, setSearching] = useState(false);
   const [tripOpen, setTripOpen] = useState(false);
-  const [start, setStart] = useState<Coordinate | null>(null);
-  const [deviceOrigin, setDeviceOrigin] = useState<Coordinate | null>(null);
+  const [start, setStart] = useState<TripPoint | null>(null);
+  const [deviceOrigin, setDeviceOrigin] = useState<TripPoint | null>(null);
   const [locatingStart, setLocatingStart] = useState(false);
-  const [destination, setDestination] = useState<Coordinate | null>(null);
+  const [destination, setDestination] = useState<TripPoint | null>(null);
   const [route, setRoute] = useState<IncidentRoute | null>(null);
-  const [requested, setRequested] = useState(0);
+  const [mode, setMode] = useState<TravelMode>("driving");
+  const [routeIndex, setRouteIndex] = useState(0);
+  const [routeRetry, setRouteRetry] = useState(0);
+  const [routeError, setRouteError] = useState("");
   const [routing, setRouting] = useState(false);
   const [modal, setModal] = useState<ModalKind>(null);
   const [picking, setPicking] = useState<Picking>(null);
@@ -52,6 +74,8 @@ export default function WorldApp() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const selectedRoad = active?.roads.find(road => road.id === roadId) ?? null;
+  const routeOption = route?.options?.[routeIndex];
+  const visibleRoute = route && routeOption ? { ...route, ...routeOption } : route;
   const reports = active?.reports ?? [];
   const shownReports = reports.slice(0, 40);
   const pinnedReport = reports.find(report => report.id === focusedReport);
@@ -102,7 +126,7 @@ export default function WorldApp() {
   function chooseIncident(id: string) {
     if (id === selected) { if (active) setFocus({ bounds: active.bounds }); return; }
     setActive(null); setSelected(id); setRoadId(null); setFocusedReport(""); setRoadQuery(""); setPoints([]); setStale(false); setError("");
-    setRequested(0); setRoute(null); setTripOpen(false); setPicking(null); setStart(null); setDestination(null);
+    resetRoute(); setTripOpen(false); setPicking(null); setStart(null); setDestination(null);
     setPlace(null); setPlaces([]); setSidebar(true);
     const url = new URL(location.href);
     if (id) url.searchParams.set("incident", id); else url.searchParams.delete("incident");
@@ -133,10 +157,17 @@ export default function WorldApp() {
     setPlace(item); setPlaces([]); setMessage("");
     setFocus({ point: item, zoom: 15 });
   }
-  function resetRoute() { setRequested(0); setRoute(null); }
+  function resetRoute() { setRoute(null); setRouteIndex(0); setRouteError(""); setRouting(false); }
+  function setTripPoint(side: "start" | "destination", point: TripPoint | null) {
+    resetRoute();
+    setPicking(null);
+    if (side === "start") setStart(point); else setDestination(point);
+  }
   function choosePoint(point: Coordinate) {
-    if (picking === "start") { setStart(point); resetRoute(); }
-    if (picking === "destination") { setDestination(point); setPlace(null); resetRoute(); }
+    if (picking === "start" || picking === "destination") {
+      setTripPoint(picking, { ...point, label: "Dropped pin" });
+      return;
+    }
     if (picking === "point" || picking === "connection") {
       if (active && !within(point, active.bounds)) { setError("Choose a point inside the incident boundary."); return; }
       if (picking === "connection" && points.length === 1 && distanceMeters(points[0], point) < 1) {
@@ -150,34 +181,38 @@ export default function WorldApp() {
     setPicking(null);
   }
   function myLocation() {
-    if (!navigator.geolocation) { setError("Location is unavailable in this browser."); return; }
-    setLocatingStart(true); setError("");
+    if (!navigator.geolocation) { setRouteError("Location is unavailable in this browser."); return; }
+    setLocatingStart(true); setRouteError("");
     navigator.geolocation.getCurrentPosition(position => {
-      const point = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+      const point = { latitude: position.coords.latitude, longitude: position.coords.longitude, label: "My location" };
       setLocatingStart(false); setDeviceOrigin(point);
-      setStart(point); resetRoute(); setPicking(null); setFocus({ point, zoom: 15 });
+      setTripPoint("start", point); setFocus({ point, zoom: 15 });
     }, () => {
       setLocatingStart(false);
-      setError("Could not get your location. Pick a starting point on the map.");
+      setRouteError("Could not get your location. Search for a starting point or pick it on the map.");
     }, { timeout: 8000, enableHighAccuracy: true });
   }
   const routeVersion = active?.version;
   useEffect(() => {
-    if (!requested || !start || !destination) return;
-    let cancelled = false;
+    if (!tripOpen || !start || !destination) return;
+    const controller = new AbortController();
+    const endpoint = active && mode === "walking" && within(start, active.bounds) ? incidentPath(active.id, "route") : "/api/routes";
     async function loadRoute() {
-      setRouting(true); setError("");
+      setRouting(true); setRouteError("");
       try {
-        const endpoint = active && within(start!, active.bounds) ? incidentPath(active.id, "route") : "/api/routes";
-        const next = await postJson<IncidentRoute>(endpoint, { origin: start, destination });
-        if (!cancelled) setRoute(next);
-      } catch (error) { if (!cancelled) { setRoute(null); setError(getMessage(error)); } }
-      finally { if (!cancelled) setRouting(false); }
+        const next = await fetchJson<IncidentRoute>(endpoint, { method: "POST", signal: controller.signal,
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify({ origin: start, destination, mode }),
+        });
+        if (controller.signal.aborted) return;
+        setRoute(next); setRouteIndex(0);
+        if (next.options?.length) setFocus({ bounds: routeBounds([start!, destination!, ...next.coordinates]) });
+      } catch (error) { if (!controller.signal.aborted) { setRoute(null); setRouteError(getMessage(error)); } }
+      finally { if (!controller.signal.aborted) setRouting(false); }
     }
     void loadRoute();
-    return () => { cancelled = true; };
+    return () => controller.abort();
     // A newer incident version recomputes an already-requested candidate.
-  }, [requested, start, destination, routeVersion, active?.id]);
+  }, [tripOpen, start, destination, mode, routeRetry, routeVersion, active?.id]);
 
   function needAccess(action: () => void) {
     if (!access) { setModal("access"); return; }
@@ -193,10 +228,11 @@ export default function WorldApp() {
     } catch (error) { setError(getMessage(error)); }
     finally { setImporting(false); }
   }
-  function startTrip(point?: Coordinate) {
+  function startTrip(point?: Place) {
+    if (!tripOpen) setMode(active ? "walking" : "driving");
     setTripOpen(true); resetRoute(); setPlaces([]);
     if (!start && deviceOrigin) setStart(deviceOrigin);
-    if (point) setDestination(point);
+    if (point) setDestination({ ...point, label: point.name });
   }
   function selectRoad(id: string) {
     setRoadId(id); setPoints([]); setSidebar(true);
@@ -244,16 +280,52 @@ export default function WorldApp() {
         </div>}
 
         {tripOpen ? <section className="world-section trip">
-          <header><h2><Footprints size={16} /> Walking directions</h2>
+          <header><h2><Route size={16} /> Directions</h2>
             <button className="circle-button" aria-label="Close directions" onClick={() => { setTripOpen(false); setPicking(null); resetRoute(); }}><X size={15} /></button></header>
-          <button className="world-pick" onClick={() => { setPicking("start"); resetRoute(); }}><i />{start ? start === deviceOrigin ? "My location" : endpointLabel(start) : "Pick start on map"}<ChevronRight size={15} /></button>
-          <button className="world-pick" onClick={() => { setPicking("destination"); resetRoute(); }}><i />{destination ? place?.latitude === destination.latitude && place.longitude === destination.longitude ? place.name : endpointLabel(destination) : "Pick destination on map"}<ChevronRight size={15} /></button>
-          <div className="world-action-row"><button className="world-secondary" onClick={myLocation} disabled={locatingStart}><Crosshair size={16} /> {locatingStart ? "Locating…" : "My location"}</button>
-            <button className="world-primary" disabled={!start || !destination || routing} onClick={() => setRequested(value => value + 1)}>{routing ? "Finding…" : "Find route"}</button></div>
-          {route && <div className={`world-route-result ${route.status}`} role="status">
-            <strong>{route.status === "unavailable" ? "Route unavailable" : route.status === "partial" ? "Partial route" : "Walking route"}
-              {route.distanceMeters > 0 && ` · ${route.distanceMeters.toLocaleString()} m`}</strong><small>{route.reason}</small>
-            {!active && <small><a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noreferrer">OSRM routing</a> · <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noreferrer">Fix the map</a></small>}
+          <div className="world-segments direction-modes" role="group" aria-label="Travel mode">
+            {travelModes.map(({ mode: item, label, icon: Icon }) =>
+              <button key={item} type="button" aria-pressed={mode === item} onClick={() => {
+                if (mode !== item) { resetRoute(); setMode(item); }
+              }}><Icon size={16} aria-hidden />{label}</button>)}
+          </div>
+          <DirectionsField side="start" point={start} onClear={() => { if (start) setTripPoint("start", null); }}
+            onSelect={item => setTripPoint("start", { ...item, label: item.name })} onPick={() => setPicking("start")} />
+          <DirectionsField side="destination" point={destination} onClear={() => { if (destination) setTripPoint("destination", null); }}
+            onSelect={item => setTripPoint("destination", { ...item, label: item.name })} onPick={() => setPicking("destination")} />
+          <div className="world-action-row">
+            <button className="world-secondary" type="button" onClick={myLocation} disabled={locatingStart}>
+              <Crosshair size={16} aria-hidden /> {locatingStart ? "Locating…" : "My location"}
+            </button>
+            <button className="world-secondary direction-swap" type="button" disabled={!start || !destination} onClick={() => {
+              resetRoute(); setStart(destination); setDestination(start); setPicking(null);
+            }}><ArrowDownUp size={15} aria-hidden /> Swap</button>
+          </div>
+          {routing && <small role="status" className="direction-search-status">Finding routes…</small>}
+          {routeError && <div className="world-route-result unavailable">
+            <small role="alert">{routeError}</small>
+            {start && destination && <button className="world-secondary" type="button" onClick={() => setRouteRetry(value => value + 1)}>Try again</button>}
+          </div>}
+          {visibleRoute && <div className={`world-route-result ${visibleRoute.status}`}>
+            <strong role="status">{visibleRoute.status === "unavailable" ? "Route unavailable" :
+              visibleRoute.status === "partial" ? "Partial route" : routeOption ? formatDuration(routeOption.durationSeconds) : "Walking route"}
+              {visibleRoute.distanceMeters > 0 && ` · ${formatDistance(visibleRoute.distanceMeters)}`}</strong>
+            {!routeOption && <small>{visibleRoute.reason}</small>}
+            {route?.options && route.options.length > 1 && <div className="direction-options" role="group" aria-label="Route options">
+              {route.options.map((option, index) => <button className="world-secondary" type="button" key={index}
+                aria-pressed={index === routeIndex} onClick={() => {
+                  setRouteIndex(index);
+                  if (start && destination) setFocus({ bounds: routeBounds([start, destination, ...option.coordinates]) });
+                }}>
+                <span>Route {index + 1}</span><span>{formatDuration(option.durationSeconds)} · {formatDistance(option.distanceMeters)}</span>
+              </button>)}
+            </div>}
+            {routeOption && <details key={routeIndex} className="direction-steps">
+              <summary>Route details</summary>
+              <ol>{routeOption.steps.map((step, index) => <li key={index}>
+                {step.instruction}{step.distanceMeters > 0 && <small>{formatDistance(step.distanceMeters)}</small>}
+              </li>)}</ol>
+            </details>}
+            {routeOption && <small><a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noreferrer">OSRM routing</a> · <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noreferrer">Fix the map</a></small>}
           </div>}
         </section> : <button type="button" className="world-nav" onClick={() => startTrip()}><span><Route size={17} /></span> Directions <ChevronRight size={15} /></button>}
 
@@ -315,7 +387,7 @@ export default function WorldApp() {
       <footer className="world-footer"><Globe size={15} /> World map <span>·</span><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a></footer>
     </aside>}
     <section id="map-view" className="world-stage" aria-label="Map">
-      <WorldMap incidents={incidents} active={active} focus={focus} route={route} start={start} destination={destination}
+      <WorldMap incidents={incidents} active={active} focus={focus} route={visibleRoute} start={start} destination={destination}
         selectedRoad={roadId} aerial={aerial} picking={!!picking} onCamera={setCamera}
         onPoint={choosePoint} onRoad={selectRoad} onIncident={chooseIncident} onReport={selectReport} />
       {!sidebar && <button className="world-restore circle-button" aria-label="Show sidebar" onClick={() => setSidebar(true)}><PanelLeft size={18} /></button>}
