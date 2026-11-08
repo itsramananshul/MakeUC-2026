@@ -224,7 +224,8 @@ struct MapLibreWorldMap: UIViewRepresentable {
             case .arrived: "arrived"
             }
             let navigation = "\(navigationState):\(store.navigationRenderRevision)"
-            return [store.mapStyle.rawValue, incidentVersions, recovery, detail, selectedRoad, origin, destination, reportLocation, incidentDraftCenter, route, navigation]
+            let surveyVisibility = store.showsIncidentSurveyImagery ? "surveys-on" : "surveys-off"
+            return [store.mapStyle.rawValue, surveyVisibility, incidentVersions, recovery, detail, selectedRoad, origin, destination, reportLocation, incidentDraftCenter, route, navigation]
                 .joined(separator: "#")
         }
 

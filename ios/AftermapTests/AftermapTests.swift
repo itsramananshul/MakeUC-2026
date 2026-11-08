@@ -170,6 +170,20 @@ final class AftermapTests: XCTestCase {
     }
 
     @MainActor
+    func testIncidentSurveyImageryIsOptIn() {
+        let suite = "AFTERMAP.SurveyVisibility.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = WorldMapStore(defaults: defaults)
+
+        XCTAssertFalse(store.showsIncidentSurveyImagery)
+        XCTAssertFalse(store.showsSurveyImageryOnMap)
+
+        store.showsIncidentSurveyImagery = true
+        XCTAssertTrue(store.showsSurveyImageryOnMap)
+    }
+
+    @MainActor
     func testExpiredDevelopmentServerMigratesToProduction() {
         for staleServer in [
             "https://guardian-administrative-percent-attention.trycloudflare.com",

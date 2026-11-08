@@ -69,6 +69,15 @@ struct RootView: View {
                                     Label(style.label, systemImage: style == store.mapStyle ? "checkmark" : style.icon)
                                 }
                             }
+                            Divider()
+                            Button {
+                                store.showsIncidentSurveyImagery.toggle()
+                            } label: {
+                                Label(
+                                    "Incident survey imagery",
+                                    systemImage: store.showsIncidentSurveyImagery ? "checkmark.square.fill" : "square"
+                                )
+                            }
                         } label: {
                             Image(systemName: store.mapStyle.icon)
                                 .font(.title3.weight(.semibold))
