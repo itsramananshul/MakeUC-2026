@@ -7,6 +7,7 @@ struct RootView: View {
     @State private var showingIncident = false
     @State private var showingReport = false
     @State private var showingDisasterHub = false
+    @State private var requestedInitialLocation = false
 
     var body: some View {
         ZStack {
@@ -28,16 +29,46 @@ struct RootView: View {
             VStack {
                 Spacer()
                 HStack {
-                    Spacer()
-                    Button { store.requestCurrentLocationAsOrigin() } label: {
-                        Image(systemName: store.userCoordinate == nil ? "location" : "location.fill")
-                            .font(.title3.weight(.semibold))
+                    if store.mapStyle == .satellite {
+                        Link(destination: URL(string: "https://cloudless.eox.at")!) {
+                            Text("EOxCloudless · Copernicus 2016–17")
+                                .font(.caption2.weight(.medium))
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .background(.regularMaterial, in: Capsule())
+                        .accessibilityLabel("Satellite imagery by EOxCloudless, containing modified Copernicus Sentinel data from 2016 and 2017")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.circle)
-                    .controlSize(.large)
-                    .accessibilityLabel("Use my location as start")
-                    .accessibilityIdentifier("map.useCurrentLocation")
+                    Spacer()
+                    VStack(spacing: 8) {
+                        Menu {
+                            ForEach(WorldMapStore.MapStyle.allCases, id: \.self) { style in
+                                Button {
+                                    store.mapStyle = style
+                                } label: {
+                                    Label(style.label, systemImage: style == store.mapStyle ? "checkmark" : style.icon)
+                                }
+                            }
+                        } label: {
+                            Image(systemName: store.mapStyle.icon)
+                                .font(.title3.weight(.semibold))
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .buttonBorderShape(.circle)
+                        .controlSize(.large)
+                        .accessibilityLabel("Map style, \(store.mapStyle.label)")
+                        .accessibilityIdentifier("map.style")
+
+                        Button { store.requestCurrentLocationAsOrigin() } label: {
+                            Image(systemName: store.userCoordinate == nil ? "location" : "location.fill")
+                                .font(.title3.weight(.semibold))
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .buttonBorderShape(.circle)
+                        .controlSize(.large)
+                        .accessibilityLabel("Use my location as start")
+                        .accessibilityIdentifier("map.useCurrentLocation")
+                    }
                 }
             }
             .padding(.horizontal, 14)
@@ -75,6 +106,12 @@ struct RootView: View {
             }
         }
         .task(id: store.query) { await store.search() }
+        .task {
+            guard !requestedInitialLocation else { return }
+            requestedInitialLocation = true
+            guard ProcessInfo.processInfo.environment["AFTERMAP_AUTOMATIC_LOCATION"] != "0" else { return }
+            store.requestCurrentLocationAsOrigin(userInitiated: false)
+        }
     }
 
     private var searchPanel: some View {
@@ -220,8 +257,6 @@ struct RootView: View {
                 .stroke(Color.primary.opacity(0.08))
         }
         .shadow(color: .black.opacity(0.18), radius: 18, y: -3)
-        .padding(.horizontal, 8)
-        .background(.regularMaterial)
         .ignoresSafeArea(edges: .bottom)
     }
 

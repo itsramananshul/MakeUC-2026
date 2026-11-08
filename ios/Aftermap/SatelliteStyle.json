@@ -1,0 +1,36 @@
+{
+  "version": 8,
+  "name": "Gaslight Maps Satellite",
+  "sources": {
+    "eox-cloudless-2016": {
+      "type": "raster",
+      "tiles": [
+        "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg"
+      ],
+      "tileSize": 256,
+      "minzoom": 0,
+      "maxzoom": 14,
+      "attribution": "EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016 & 2017)"
+    }
+  },
+  "layers": [
+    {
+      "id": "satellite-background",
+      "type": "background",
+      "paint": {
+        "background-color": "#0b1720"
+      }
+    },
+    {
+      "id": "satellite-imagery",
+      "type": "raster",
+      "source": "eox-cloudless-2016",
+      "minzoom": 0,
+      "maxzoom": 24,
+      "paint": {
+        "raster-opacity": 1,
+        "raster-fade-duration": 150
+      }
+    }
+  ]
+}

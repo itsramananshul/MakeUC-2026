@@ -3,6 +3,7 @@ import XCTest
 final class AftermapUITests: XCTestCase {
     func testAppOpensDirectlyToWorldwideMap() {
         let app = XCUIApplication()
+        app.launchEnvironment["AFTERMAP_AUTOMATIC_LOCATION"] = "0"
         app.launch()
 
         XCTAssertTrue(app.otherElements["world.map"].waitForExistence(timeout: 10))
@@ -12,11 +13,13 @@ final class AftermapUITests: XCTestCase {
         XCTAssertTrue(app.buttons["route.preview"].exists)
         XCTAssertTrue(app.buttons["disaster.report"].exists)
         XCTAssertTrue(app.buttons["map.useCurrentLocation"].exists)
+        XCTAssertTrue(app.buttons["map.style"].exists)
         XCTAssertFalse(app.buttons["join.submit"].exists)
     }
 
     func testSimulatorCanChooseRouteEndpointsOnMap() {
         let app = XCUIApplication()
+        app.launchEnvironment["AFTERMAP_AUTOMATIC_LOCATION"] = "0"
         app.launch()
 
         let origin = app.buttons["route.origin"]
@@ -39,6 +42,7 @@ final class AftermapUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-aftermapIncidentPreview"]
         app.launchEnvironment["AFTERMAP_INCIDENT_PREVIEW"] = "1"
+        app.launchEnvironment["AFTERMAP_AUTOMATIC_LOCATION"] = "0"
         app.launch()
 
         let addReport = app.buttons["incident.fieldReport"]

@@ -16,6 +16,7 @@
 		67FC45C83F9754B39A485FC6 /* AftermapUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 407D65CF2E730461A33716D0 /* AftermapUITests.swift */; };
 		68F92B391E9A829B1DA56060 /* IncidentModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B85F4C6DD1F0CCB9D6BB057B /* IncidentModels.swift */; };
 		726C6EBAF103954923576259 /* MapLibre in Frameworks */ = {isa = PBXBuildFile; productRef = 57377AA2910B127B81CDB4A9 /* MapLibre */; };
+		837683191D2285C8C21DF21A /* SatelliteStyle.json in Resources */ = {isa = PBXBuildFile; fileRef = 18753EB55FBD14AA67251323 /* SatelliteStyle.json */; };
 		88566C4D95C0739D638CAB17 /* CaptureTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20F68C6900E0126A99E7379 /* CaptureTools.swift */; };
 		A72D64C817A4AB41C7A9B756 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 771EC1A60DC46BBEEB88503B /* Models.swift */; };
 		B47A4A8F7FFEC79004EE30C2 /* MapLibreWorldMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26270C47314D796E97481573 /* MapLibreWorldMap.swift */; };
@@ -48,6 +49,7 @@
 /* Begin PBXFileReference section */
 		16B8DC67E789D6D2FD352969 /* AftermapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AftermapTests.swift; sourceTree = "<group>"; };
 		170F548426782565848D574D /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		18753EB55FBD14AA67251323 /* SatelliteStyle.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = SatelliteStyle.json; sourceTree = "<group>"; };
 		1A71374C609DD9217768334B /* AftermapTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = AftermapTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1CD38EEAC0208C87EF1A2F08 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		26270C47314D796E97481573 /* MapLibreWorldMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapLibreWorldMap.swift; sourceTree = "<group>"; };
@@ -99,6 +101,7 @@
 				771EC1A60DC46BBEEB88503B /* Models.swift */,
 				3711A09D0E7D4B10AA387BC4 /* ReportFlowView.swift */,
 				170F548426782565848D574D /* RootView.swift */,
+				18753EB55FBD14AA67251323 /* SatelliteStyle.json */,
 				7BC429A58DFB7EBA608E549F /* SessionStore.swift */,
 				827A0FBB0E2BB06965F38CC3 /* Theme.swift */,
 				CA1D7399953B5A2CA3698307 /* WorldMapStore.swift */,
@@ -253,6 +256,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				BAAA4167BE4AE5C609D44C4E /* Assets.xcassets in Resources */,
+				837683191D2285C8C21DF21A /* SatelliteStyle.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

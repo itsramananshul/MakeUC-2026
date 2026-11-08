@@ -2,18 +2,26 @@ import MapLibre
 import SwiftUI
 import UIKit
 
+private final class MapLibreBundleToken {}
+
 struct MapLibreWorldMap: UIViewRepresentable {
     @ObservedObject var store: WorldMapStore
     @Environment(\.colorScheme) private var colorScheme
 
     static let lightStyleURL = URL(string: "https://tiles.openfreemap.org/styles/liberty")!
     static let darkStyleURL = URL(string: "https://tiles.openfreemap.org/styles/fiord")!
+    static let satelliteStyleURL = Bundle(for: MapLibreBundleToken.self)
+        .url(forResource: "SatelliteStyle", withExtension: "json")!
 
     static func styleURL(for colorScheme: ColorScheme) -> URL {
         colorScheme == .dark ? darkStyleURL : lightStyleURL
     }
 
-    private var baseStyleURL: URL { Self.styleURL(for: colorScheme) }
+    static func styleURL(for mapStyle: WorldMapStore.MapStyle, colorScheme: ColorScheme) -> URL {
+        mapStyle == .satellite ? satelliteStyleURL : styleURL(for: colorScheme)
+    }
+
+    private var baseStyleURL: URL { Self.styleURL(for: store.mapStyle, colorScheme: colorScheme) }
 
     func makeCoordinator() -> Coordinator { Coordinator(store: store, baseStyleURL: baseStyleURL) }
 

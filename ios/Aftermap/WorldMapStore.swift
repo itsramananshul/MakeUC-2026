@@ -3,6 +3,25 @@ import Foundation
 
 @MainActor
 final class WorldMapStore: ObservableObject {
+    enum MapStyle: String, CaseIterable {
+        case satellite
+        case streets
+
+        var label: String {
+            switch self {
+            case .satellite: "Satellite"
+            case .streets: "Streets"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .satellite: "globe.americas.fill"
+            case .streets: "map.fill"
+            }
+        }
+    }
+
     enum ConnectionState: Equatable {
         case loading
         case live
@@ -51,17 +70,24 @@ final class WorldMapStore: ObservableObject {
     @Published private(set) var locationRequestRevision = 0
     @Published var reportLocation: IncidentCoordinate?
     @Published private(set) var reportLocationRevision = 0
+    @Published var mapStyle: MapStyle {
+        didSet { defaults.set(mapStyle.rawValue, forKey: "aftermap.mapStyle") }
+    }
 
     private let defaults: UserDefaults
     private let urlSession: URLSession
     private var cameraRevision = 0
-    private enum PendingLocationUse { case origin, report }
+    private enum PendingLocationUse {
+        case origin(userInitiated: Bool)
+        case report
+    }
     private var pendingLocationUse: PendingLocationUse?
     private var isIncidentPreviewMode = false
 
     init(defaults: UserDefaults = .standard, urlSession: URLSession = .shared) {
         self.defaults = defaults
         self.urlSession = urlSession
+        mapStyle = MapStyle(rawValue: defaults.string(forKey: "aftermap.mapStyle") ?? "") ?? .satellite
         if let savedServer = defaults.string(forKey: "aftermap.serverURL"),
            URL(string: savedServer)?.host != "aftermap-makeuc.vercel.app" {
             serverURL = savedServer
@@ -218,8 +244,8 @@ final class WorldMapStore: ObservableObject {
         reportLocation = nil
     }
 
-    func requestCurrentLocationAsOrigin() {
-        pendingLocationUse = .origin
+    func requestCurrentLocationAsOrigin(userInitiated: Bool = true) {
+        pendingLocationUse = .origin(userInitiated: userInitiated)
         locationRequestRevision += 1
     }
 
@@ -262,7 +288,9 @@ final class WorldMapStore: ObservableObject {
     }
 
     func locationFailed(_ message: String) {
+        guard let pending = pendingLocationUse else { return }
         pendingLocationUse = nil
+        if case .origin(userInitiated: false) = pending { return }
         notice = message
     }
 

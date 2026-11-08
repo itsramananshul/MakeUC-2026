@@ -1,4 +1,5 @@
 import XCTest
+import CoreLocation
 import UIKit
 @testable import Aftermap
 
@@ -110,6 +111,24 @@ final class AftermapTests: XCTestCase {
     func testMapStyleFollowsSystemAppearance() {
         XCTAssertEqual(MapLibreWorldMap.styleURL(for: .light).lastPathComponent, "liberty")
         XCTAssertEqual(MapLibreWorldMap.styleURL(for: .dark).lastPathComponent, "fiord")
+    }
+
+    @MainActor
+    func testSatelliteIsTheDefaultMapStyleAndStreetsRemainAvailable() {
+        let suite = "GaslightMaps.MapStyle.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = WorldMapStore(defaults: defaults)
+
+        XCTAssertEqual(store.mapStyle, .satellite)
+        XCTAssertEqual(
+            MapLibreWorldMap.styleURL(for: store.mapStyle, colorScheme: .light).lastPathComponent,
+            "SatelliteStyle.json"
+        )
+
+        store.mapStyle = .streets
+        XCTAssertEqual(MapLibreWorldMap.styleURL(for: store.mapStyle, colorScheme: .dark).lastPathComponent, "fiord")
+        XCTAssertEqual(defaults.string(forKey: "aftermap.mapStyle"), "streets")
     }
 
     func testIncidentBoundsDetectsRouteIntersection() {
@@ -233,6 +252,48 @@ final class AftermapTests: XCTestCase {
         XCTAssertNil(store.notice)
         XCTAssertTrue(store.places.isEmpty)
         XCTAssertFalse(store.isSearching)
+    }
+
+    @MainActor
+    func testAcceptedAutomaticLocationBecomesRouteStart() {
+        let suite = "GaslightMaps.AutomaticLocation.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = WorldMapStore(defaults: defaults)
+
+        store.requestCurrentLocationAsOrigin(userInitiated: false)
+        store.acceptUserLocation(CLLocationCoordinate2D(latitude: 39.1031, longitude: -84.5120))
+
+        XCTAssertEqual(store.origin?.latitude, 39.1031)
+        XCTAssertEqual(store.origin?.longitude, -84.5120)
+        XCTAssertNil(store.notice)
+    }
+
+    @MainActor
+    func testDeclinedAutomaticLocationStaysSilent() {
+        let suite = "GaslightMaps.DeclinedLocation.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = WorldMapStore(defaults: defaults)
+
+        store.requestCurrentLocationAsOrigin(userInitiated: false)
+        store.locationFailed("Location permission was denied.")
+
+        XCTAssertNil(store.origin)
+        XCTAssertNil(store.notice)
+    }
+
+    @MainActor
+    func testDeclinedManualLocationShowsHelpfulNotice() {
+        let suite = "GaslightMaps.ManualLocation.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = WorldMapStore(defaults: defaults)
+
+        store.requestCurrentLocationAsOrigin()
+        store.locationFailed("Location permission was denied. Choose a start point on the map instead.")
+
+        XCTAssertEqual(store.notice, "Location permission was denied. Choose a start point on the map instead.")
     }
 
     func testLiveWorldContract() async throws {
