@@ -5,10 +5,6 @@ import { link, unlink, writeFile } from "node:fs/promises";
 const { AFTERMAP_DB_PATH: path, AFTERMAP_DB_RESTORE_URL: url,
   AFTERMAP_DB_RESTORE_TOKEN: token, AFTERMAP_DB_RESTORE_SHA256: sha256 } = process.env;
 
-if (!process.env.AFTERMAP_OPERATOR_KEY?.trim()) {
-  throw new Error("The workspace operator key is required.");
-}
-
 if (url && path && !existsSync(path)) {
   if (new URL(url).protocol !== "https:" || !token || !/^[a-f\d]{64}$/i.test(sha256 ?? "")) {
     throw new Error("Set an HTTPS restore URL, a bearer token, and the backup checksum.");
