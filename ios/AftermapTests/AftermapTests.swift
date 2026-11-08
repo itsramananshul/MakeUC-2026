@@ -146,6 +146,31 @@ final class AftermapTests: XCTestCase {
         XCTAssertEqual(currentIncident.publishedSurveys.last?.detailTiles?.first?.url, "/api/imagery/close-up")
     }
 
+    @MainActor
+    func testMapRendererComposesEverySurveyBatchInTimestampOrder() throws {
+        let bounds = IncidentBounds(west: -84.53, south: 39.09, east: -84.49, north: 39.12)
+        let old = IncidentImagery(url: "/old.webp", bounds: bounds, source: "Old", timestamp: "2026-11-08T03:00:00Z")
+        let newest = IncidentImagery(url: "/new.webp", bounds: bounds, source: "New", timestamp: "2026-11-08T05:00:00Z")
+        let middle = IncidentImagery(url: "/middle.webp", bounds: bounds, source: "Middle", timestamp: "2026-11-08T04:00:00Z")
+        let incident = Incident(
+            id: "flood",
+            name: "Flood",
+            kind: .incident,
+            bounds: bounds,
+            imagery: newest,
+            surveys: [newest, old, middle, newest],
+            version: 4,
+            roadCount: 0
+        )
+
+        let result = MapLibreWorldMap.Coordinator.surveyImageryForRendering(
+            incidents: [incident],
+            recoveryImagery: []
+        )
+
+        XCTAssertEqual(result.map(\.url), ["/old.webp", "/middle.webp", "/new.webp"])
+    }
+
     func testMapStyleFollowsSystemAppearance() {
         XCTAssertEqual(MapLibreWorldMap.styleURL(for: .light).lastPathComponent, "liberty")
         XCTAssertEqual(MapLibreWorldMap.styleURL(for: .dark).lastPathComponent, "fiord")

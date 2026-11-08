@@ -195,23 +195,17 @@ struct MapLibreWorldMap: UIViewRepresentable {
         }
 
         private var staticStyleSignature: String {
-            let incidentVersions = store.incidents.map { incident in
-                let survey = incident.publishedSurveys.max { $0.timestamp < $1.timestamp }.map { imagery in
-                    let detailTiles = imagery.detailTiles?.map {
-                        "\($0.url):\($0.bounds.west),\($0.bounds.south),\($0.bounds.east),\($0.bounds.north)"
-                    }.joined(separator: ",") ?? "-"
-                    return "\(imagery.timestamp):\(imagery.url):\(detailTiles)"
-                } ?? "-"
-                return "\(incident.id):\(incident.version):\(survey)"
-            }.joined(separator: "|")
-            let recovery = store.recoveryImagery.map { imagery in
+            let imagery = Self.surveyImageryForRendering(
+                incidents: store.incidents,
+                recoveryImagery: store.recoveryImagery
+            ).map { imagery in
                 let detailTiles = imagery.detailTiles?.map {
                     "\($0.url):\($0.bounds.west),\($0.bounds.south),\($0.bounds.east),\($0.bounds.north)"
                 }.joined(separator: ",") ?? "-"
                 return "\(imagery.timestamp):\(imagery.url):\(detailTiles)"
             }.joined(separator: ";")
             let surveyVisibility = store.showsIncidentSurveyImagery ? "surveys-on" : "surveys-off"
-            return [store.mapStyle.rawValue, surveyVisibility, incidentVersions, recovery].joined(separator: "#")
+            return [store.mapStyle.rawValue, surveyVisibility, imagery].joined(separator: "#")
         }
 
         private var dynamicStyleSignature: String {
@@ -302,13 +296,27 @@ struct MapLibreWorldMap: UIViewRepresentable {
 
         private func addImagery(to style: MLNStyle) {
             guard store.showsSurveyImageryOnMap else { return }
-            for (index, incident) in store.incidents.enumerated() {
-                guard let imagery = incident.publishedSurveys.max(by: { $0.timestamp < $1.timestamp }) else { continue }
-                addSurvey(imagery, namespace: "incident-\(index)-latest", to: style)
+            let imagery = Self.surveyImageryForRendering(
+                incidents: store.incidents,
+                recoveryImagery: store.recoveryImagery
+            )
+            for (index, survey) in imagery.enumerated() {
+                addSurvey(survey, namespace: "survey-\(index)", to: style)
             }
-            for (index, imagery) in store.recoveryImagery.sorted(by: { $0.timestamp < $1.timestamp }).enumerated() {
-                addSurvey(imagery, namespace: "recovery-\(index)", to: style)
-            }
+        }
+
+        /// Mirrors the web renderer: compose every published survey batch in
+        /// chronological order, then place newer observations above older ones.
+        /// A repeated URL is one raster, even when a legacy `imagery` field and
+        /// the current `surveys` array both reference it.
+        static func surveyImageryForRendering(
+            incidents: [Incident],
+            recoveryImagery: [IncidentImagery]
+        ) -> [IncidentImagery] {
+            let ordered = (recoveryImagery + incidents.flatMap(\.publishedSurveys))
+                .sorted { $0.timestamp < $1.timestamp }
+            var seenURLs = Set<String>()
+            return ordered.filter { seenURLs.insert($0.url).inserted }
         }
 
         private func addSurvey(_ imagery: IncidentImagery, namespace: String, to style: MLNStyle) {
@@ -321,7 +329,7 @@ struct MapLibreWorldMap: UIViewRepresentable {
                     bounds: imagery.bounds,
                     opacity: 1,
                     minimumZoom: 9,
-                    maximumZoom: imagery.detailTiles?.isEmpty == false ? 16.25 : 24
+                    maximumZoom: 24
                 )
             }
             for (tileIndex, tile) in (imagery.detailTiles ?? []).enumerated() {
@@ -333,7 +341,7 @@ struct MapLibreWorldMap: UIViewRepresentable {
                     url: tileURL,
                     bounds: tile.bounds,
                     opacity: 1,
-                    minimumZoom: 15.75,
+                    minimumZoom: 16,
                     maximumZoom: 24
                 )
             }
