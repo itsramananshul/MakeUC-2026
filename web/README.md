@@ -26,7 +26,7 @@ Copy `.env.example` to `.env.local` for configuration. Set `AFTERMAP_OPERATOR_KE
 
 ### Imagery and providers
 
-- **Map** opens with the [EOxCloudless 2016](https://cloudless.eox.at/documentation/faq) satellite basemap. Switch to Streets for OpenFreeMap vector tiles and OpenStreetMap attribution. The satellite basemap provides background context, and uploaded incident surveys show more recent conditions for the area they cover.
+- **Map** opens with satellite imagery and OpenFreeMap road labels and outlines. Set `NEXT_PUBLIC_MAPTILER_KEY` at build time for [MapTiler Satellite](https://docs.maptiler.com/schema-raster/satellite/). Otherwise the app uses [EOxCloudless 2016](https://cloudless.eox.at/documentation/faq). Switch to Streets for the full vector basemap. Uploaded incident surveys show more recent conditions for the area they cover.
 - **Place search** uses Photon. Set `PHOTON_URL` to use your own server. The default public service is used for individual searches.
 - **Road import** uses Overpass and falls back to the OpenStreetMap API for bounded requests. Set `OVERPASS_URL` to configure an instance.
 - **Walking outside incidents** uses OSRM. Set `OSRM_FOOT_URL` to your walking router for sustained traffic. The public fallback is throttled to one request per second. Available routes crossing a known incident are excluded.
@@ -41,7 +41,9 @@ Set `NODEODM_URL=http://127.0.0.1:3111`. Provide overlapping images of the same 
 
 ## Deployment and shared API
 
-Vercel serves the frontend from `web/` on GitHub `main`. Set `AFTERMAP_API_ORIGIN` to the HTTPS origin of the shared Node backend. The Node host runs SQLite and connects to the drone worker. The current Vercel site depends on that host and its tunnel remaining online.
+Vercel serves the frontend from `web/` on GitHub `main`. The production `AFTERMAP_API_ORIGIN` is `https://gaslight-api-madman.anshullabs.tech`. Madman Coolify deploys the repository's root `compose.yml` with the Node API and a private NodeODM worker. SQLite and the drone worker use separate persistent volumes. The existing Madman Cloudflare tunnel serves HTTPS for the public API.
+
+For a fresh Compose deployment, set `AFTERMAP_OPERATOR_KEY` in the host's runtime environment. To migrate an existing database, provide an authenticated HTTPS snapshot URL, its bearer token, and its SHA-256 checksum using the `AFTERMAP_DB_RESTORE_*` variables in `compose.yml`. The container imports a snapshot only when the persistent database is absent. Clear the restore variables after verifying the import.
 
 - `GET /api/incidents` lists incidents. `POST /api/incidents` creates an incident and returns its access key.
 - `GET /api/incidents/{id}` returns the current incident snapshot, roads, reports, and imagery.

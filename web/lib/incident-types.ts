@@ -1,5 +1,4 @@
 export type Coordinate = { latitude: number; longitude: number };
-export type RouteTravelMode = "driving" | "walking" | "cycling" | "transit";
 export type GeographicBounds = { west: number; south: number; east: number; north: number };
 export type RoadState = "unknown" | "open" | "blocked" | "hazard" | "conflict";
 export type Road = { id: string; from: Coordinate; to: Coordinate; state: RoadState; label: string };
@@ -15,9 +14,14 @@ export type IncidentSummary = {
 };
 export type Incident = IncidentSummary & { roads: Road[]; reports: FieldReport[] };
 export type Place = { id: string; name: string; detail: string; latitude: number; longitude: number };
+export type TravelMode = "driving" | "walking" | "cycling" | "transit";
+export type RouteOption = {
+  coordinates: Coordinate[]; distanceMeters: number; durationSeconds: number;
+  steps: { instruction: string; distanceMeters: number }[];
+};
 export type IncidentRoute = {
   status: "complete" | "partial" | "unavailable"; coordinates: Coordinate[]; distanceMeters: number;
-  reason: string; startLabel?: string; endLabel?: string;
+  reason: string; startLabel?: string; endLabel?: string; options?: RouteOption[];
 };
 export const coordinateKey = (point: Coordinate) => `${point.longitude.toFixed(7)},${point.latitude.toFixed(7)}`;
 export const lngLat = (point: Coordinate): [number, number] => [point.longitude, point.latitude];
