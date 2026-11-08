@@ -120,7 +120,6 @@ export default function WorldMap(props: Props) {
     view.addControl(new NavigationControl({ visualizePitch: false }), "top-right");
     view.addControl(new ScaleControl({ unit: "metric" }), "bottom-right");
     view.on("load", () => {
-      view.setMaxBounds([[-180, -85], [180, 85]]);
       addLayers(view, inputs.current.incidentPreview === undefined);
       setReady(true);
       setMessage("");
