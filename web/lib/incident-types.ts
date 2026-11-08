@@ -10,7 +10,7 @@ export type FieldReport = {
 export type IncidentImagery = { url: string; bounds: GeographicBounds; source: string; timestamp: string };
 export type IncidentSummary = {
   id: string; name: string; kind: "incident"; bounds: GeographicBounds; imagery: IncidentImagery | null; surveys?: IncidentImagery[];
-  version: number; roadCount: number;
+  version: number; roadCount: number; resolvedAt?: string; recoveryImagery?: IncidentImagery;
 };
 export type Incident = IncidentSummary & { roads: Road[]; reports: FieldReport[] };
 export type Place = { id: string; name: string; detail: string; latitude: number; longitude: number };

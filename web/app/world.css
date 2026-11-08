@@ -245,10 +245,11 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
 .incident-form { display: grid; gap: 11px; }
 .incident-form label { display: grid; gap: 5px; font-size: 13px; font-weight: 630; }
 .incident-form label small { font-weight: 400; color: #52636e; }
-.incident-form input:not([type=file]), .incident-form select, .incident-form textarea { min-width: 0; width: 100%; color: #17212b;
+.incident-form input:not([type=file], [type=checkbox]), .incident-form select, .incident-form textarea { min-width: 0; width: 100%; color: #17212b;
   background: #fff; border: 1px solid #d5dee4; border-radius: 8px; padding: 8px; font-size: 16px; }
 .incident-form textarea { resize: vertical; }
 .incident-form .world-primary { min-height: 40px; }
+.incident-form .incident-recovery-option { display: flex; align-items: center; min-height: 44px; gap: 8px; }
 .incident-location { display: grid; gap: 7px; min-inline-size: 0; padding: 0; margin: 0; border: 0; }
 .incident-location legend { padding: 0; margin-bottom: 5px; font-size: 13px; font-weight: 630; }
 .incident-location-search, .incident-location-actions, .incident-photo-actions { display: flex; gap: 6px; }

@@ -21,6 +21,41 @@ export function Modal({ title, description, onClose, children }: {
   </Dialog.Root>;
 }
 
+export function ResolveIncident({ incident, access, onResolve }: {
+  incident: Incident; access: string; onResolve: (incident: Incident) => void;
+}) {
+  const [recoverySurveyUrl, setRecoverySurveyUrl] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const errorMessage = useRef<HTMLParagraphElement>(null);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const result = await postJson<{ incident: Incident }>(
+        incidentPath(incident.id, "resolve"), { recoverySurveyUrl }, access,
+      );
+      onResolve(result.incident);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not resolve the incident.");
+      requestAnimationFrame(() => errorMessage.current?.focus());
+    } finally { setSaving(false); }
+  }
+  return <form className="incident-form" onSubmit={submit}>
+    {incident.imagery && <label className="incident-recovery-option">
+      <input type="checkbox" checked={!!recoverySurveyUrl} disabled={saving}
+        onChange={event => setRecoverySurveyUrl(event.target.checked ? incident.imagery?.url ?? null : null)} />
+      Keep the latest survey as the repaired map
+    </label>}
+    <p>{recoverySurveyUrl ? "Confirm that the selected survey shows the repaired area." : "The map will return to its standard imagery in this area."} Standard directions will resume, and field reports will stay in the incident record.</p>
+    {error && <p className="incident-error" role="alert" tabIndex={-1} ref={errorMessage}>{error}</p>}
+    <button className="world-primary" type="submit" disabled={saving}>
+      {saving && <LoaderCircle size={16} className="incident-spinner" aria-hidden />} Resolve incident
+    </button>
+  </form>;
+}
+
 type IncidentLocation = { center: Coordinate; label: string };
 type MapFocus = { point: Coordinate; zoom?: number };
 const noIncidents: Incident[] = [];

@@ -22,6 +22,7 @@ export const routeInput = z.object({
   origin: routeCoordinate, destination: routeCoordinate,
   mode: z.enum(["driving", "walking", "cycling", "transit"]).default("walking"),
 });
+export const resolveInput = z.object({ recoverySurveyUrl: z.string().regex(/^\/api\/imagery\/[a-f0-9]{32}$/).nullable() });
 export const reportInput = z.object({
   id: z.string().regex(/^[A-Za-z0-9_-]{8,80}$/),
   displayName: reporterName,

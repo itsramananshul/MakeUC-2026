@@ -38,8 +38,12 @@ function summary(incident: Incident): IncidentSummary {
   return { ...result, roadCount: roads.length };
 }
 export function incidentList(): IncidentSummary[] {
-  return init().prepare("SELECT details FROM incidents ORDER BY rowid DESC").all()
+  return init().prepare("SELECT details FROM incidents WHERE json_extract(details, '$.resolvedAt') IS NULL ORDER BY rowid DESC").all()
     .map(row => summary(JSON.parse(row.details as string) as Incident));
+}
+export function publishedRecoveryImagery(): IncidentImagery[] {
+  return init().prepare("SELECT json_extract(details, '$.recoveryImagery') AS image FROM incidents WHERE image IS NOT NULL").all()
+    .map(row => JSON.parse(row.image as string) as IncidentImagery);
 }
 export function getIncident(id: string): Incident {
   const row = init().prepare("SELECT details FROM incidents WHERE id = ?").get(id);
@@ -107,8 +111,31 @@ function changeIncident(id: string, mutate: (incident: Incident) => boolean) {
     throw error;
   }
 }
+export function requireActiveIncident(incident: Incident) {
+  if (incident.resolvedAt) throw new RequestError("This incident has been resolved.", 409);
+  return incident;
+}
+export function resolveIncident(id: string, recoverySurveyUrl: string | null) {
+  return changeIncident(id, incident => {
+    if (incident.resolvedAt) return false;
+    const job = pendingJob(id);
+    if (job && Date.now() - job.created_at < 30 * 60_000) {
+      throw new RequestError("Wait for the aerial survey to finish before resolving this incident.", 409);
+    }
+    if (recoverySurveyUrl) {
+      if (incident.imagery?.url !== recoverySurveyUrl) {
+        throw new RequestError("The latest survey changed. Review it before publishing it as the repaired map.", 409);
+      }
+      incident.recoveryImagery = incident.imagery;
+    }
+    if (job) failJob(id, job.id);
+    incident.resolvedAt = new Date().toISOString();
+    return true;
+  });
+}
 export function setIncidentRoads(id: string, imported: Road[]) {
   return changeIncident(id, incident => {
+    requireActiveIncident(incident);
     const seen = new Set(incident.roads.map(road => road.id));
     const additions = imported.filter(road => !seen.has(road.id));
     if (incident.roads.length + additions.length > 9000) {
@@ -120,6 +147,7 @@ export function setIncidentRoads(id: string, imported: Road[]) {
 }
 export function saveIncidentImage(id: string, bytes: Buffer, data: Omit<IncidentImagery, "url">, jobId?: string) {
   return changeIncident(id, incident => {
+    requireActiveIncident(incident);
     if (jobId && incidentJob(id, jobId)?.state !== "queued") return false;
     const bounds = incident.bounds, image = data.bounds;
     if (image.east <= bounds.west || image.west >= bounds.east || image.north <= bounds.south || image.south >= bounds.north) {
@@ -144,6 +172,7 @@ export function saveIncidentImage(id: string, bytes: Buffer, data: Omit<Incident
 export function submitIncidentReport(id: string, report: ReportInput) {
   return changeIncident(id, incident => {
     if (incident.reports.some(item => item.id === report.id)) return false;
+    requireActiveIncident(incident);
     if (incident.reports.length >= 5000) throw new RequestError("This incident has reached its report limit.", 429);
 
     let road = report.edgeId ? incident.roads.find(item => item.id === report.edgeId) : undefined;
@@ -223,6 +252,7 @@ export function incidentJob(id: string, jobId: string) {
     .get(id, jobId) as { id: string; state: string; created_at: number } | undefined;
 }
 export function recordJob(id: string, jobId: string) {
+  requireActiveIncident(getIncident(id));
   init().prepare("INSERT INTO incident_jobs VALUES (?, ?, 'queued', ?)").run(id, jobId, Date.now());
 }
 export function failJob(id: string, jobId: string) {

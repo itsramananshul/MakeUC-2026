@@ -3,8 +3,8 @@ import { droneStatus, startDroneJob } from "@/lib/drone";
 import { geographicBounds } from "@/lib/geography";
 import { imageryLimit, mosaic } from "@/lib/imagery";
 import { incidentRoute } from "@/lib/incident-route";
-import { authorizeIncident, failJob, getEvidence, getIncident, incidentJob, incidentList, pendingJob, recordJob, saveIncidentImage, setIncidentRoads, submitIncidentReport } from "@/lib/incident-store";
-import { bearer, failure, json, reportInput, routeInput } from "@/lib/incident-validation";
+import { authorizeIncident, failJob, getEvidence, getIncident, incidentJob, incidentList, pendingJob, recordJob, requireActiveIncident, resolveIncident, saveIncidentImage, setIncidentRoads, submitIncidentReport } from "@/lib/incident-store";
+import { bearer, failure, json, reportInput, resolveInput, routeInput } from "@/lib/incident-validation";
 import { loadRoads } from "@/lib/osm";
 import { RequestError } from "@/lib/store";
 import { readInput } from "@/lib/validation";
@@ -69,16 +69,26 @@ export async function POST(request: Request, context: Context) {
     if (operation === "route") {
       const { origin, destination, mode } = await readInput(request, routeInput);
       const incident = getIncident(id);
+      if (incident.resolvedAt) return json({ status: "unavailable", coordinates: [], distanceMeters: 0,
+        reason: "This incident is resolved. Use standard directions." });
       if (mode !== "walking") return json({ status: "unavailable", coordinates: [], distanceMeters: 0,
         reason: "Switch to Walk to use reported passages in this incident." });
       return json(incidentRoute(incident, origin, destination, incidentList()));
     }
     authorizeIncident(id, bearer(request));
-    if (operation === "roads") return json({ incident: setIncidentRoads(id, await loadRoads(getIncident(id).bounds)) });
+    if (operation === "resolve") {
+      const { recoverySurveyUrl } = await readInput(request, resolveInput);
+      return json({ incident: resolveIncident(id, recoverySurveyUrl) });
+    }
+    if (operation === "roads") {
+      const incident = requireActiveIncident(getIncident(id));
+      return json({ incident: setIncidentRoads(id, await loadRoads(incident.bounds)) });
+    }
     if (operation === "reports") {
       return json({ incident: submitIncidentReport(id, await readInput(request, reportInput, 1_610_000)) });
     }
     if (operation === "imagery" || operation === "imagery/raw") {
+      requireActiveIncident(getIncident(id));
       const size = Number(request.headers.get("content-length"));
       if (!size || size > imageryLimit + 80_000) throw new RequestError("Choose up to 72 MB of imagery.", 413);
       const data = await request.formData();

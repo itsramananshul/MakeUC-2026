@@ -6,16 +6,16 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
-import { distanceMeters, within, type Coordinate, type GeographicBounds, type Incident, type IncidentRoute, type IncidentSummary, type Place, type TravelMode } from "@/lib/incident-types";
+import { distanceMeters, within, type Coordinate, type GeographicBounds, type Incident, type IncidentImagery, type IncidentRoute, type IncidentSummary, type Place, type TravelMode } from "@/lib/incident-types";
 import { crossesIncident } from "@/lib/route-boundaries";
 import { fetchJson, incidentPath, postJson } from "@/lib/world-client";
-import { AccessKey, CreateIncident, Modal, ReportIncident, SurveyUpload } from "./incident-dialogs";
+import { AccessKey, CreateIncident, Modal, ReportIncident, ResolveIncident, SurveyUpload } from "./incident-dialogs";
 import PlaceFinder from "./place-finder";
 import WorldMap from "./world-map";
 
 type Focus = { point: Coordinate; zoom?: number } | { bounds: GeographicBounds };
 type Picking = "start" | "destination" | "point" | "connection" | null;
-type ModalKind = "create" | "access" | "report" | "survey" | null;
+type ModalKind = "create" | "access" | "report" | "survey" | "resolve" | null;
 type Stop = "start" | "destination";
 type TripPoint = Coordinate & { label: string; detail?: string };
 const labels = { unknown: "Unverified", open: "Reported open", blocked: "Blocked", hazard: "Hazard", conflict: "Disputed" };
@@ -44,6 +44,7 @@ function routeBounds(points: Coordinate[]): GeographicBounds {
 
 export default function WorldApp() {
   const [incidents, setIncidents] = useState<IncidentSummary[]>([]);
+  const [recoveryImagery, setRecoveryImagery] = useState<IncidentImagery[]>([]);
   const [active, setActive] = useState<Incident | null>(null);
   const [selected, setSelected] = useState("");
   const [focus, setFocus] = useState<Focus | null>(null);
@@ -102,7 +103,10 @@ export default function WorldApp() {
     .sort((a, b) => a.distance - b.distance).slice(0, 8) : [];
 
   function refreshList() {
-    return fetchJson<{ incidents: IncidentSummary[] }>("/api/incidents").then(value => setIncidents(value.incidents));
+    return fetchJson<{ incidents: IncidentSummary[]; recoveryImagery?: IncidentImagery[] }>("/api/incidents").then(value => {
+      setIncidents(value.incidents);
+      setRecoveryImagery(value.recoveryImagery ?? []);
+    });
   }
   useEffect(() => {
     const id = new URLSearchParams(location.search).get("incident") ?? "";
@@ -150,7 +154,10 @@ export default function WorldApp() {
   }
   function applyIncident(next: Incident) {
     setActive(current => current?.id === next.id && current.version > next.version ? current : next);
-    setIncidents(current => [next, ...current.filter(item => item.id !== next.id)]);
+    setIncidents(current => {
+      const others = current.filter(item => item.id !== next.id);
+      return next.resolvedAt ? others : [next, ...others];
+    });
   }
   function create(next: Incident, key: string) {
     chooseIncident(next.id); applyIncident(next); changeAccess(key, next.id);
@@ -198,10 +205,11 @@ export default function WorldApp() {
     }, { timeout: 8000, enableHighAccuracy: true });
   }
   const routeVersion = active?.version;
+  const incidentAreas = incidents.map(incident => incident.id).sort().join(",");
   useEffect(() => {
     if (!tripOpen || !start || !destination) return;
     const controller = new AbortController();
-    const endpoint = active && mode === "walking" && within(start, active.bounds) ? incidentPath(active.id, "route") : "/api/routes";
+    const endpoint = active && !active.resolvedAt && mode === "walking" && within(start, active.bounds) ? incidentPath(active.id, "route") : "/api/routes";
     async function loadRoute() {
       setRouting(true); setRouteError("");
       try {
@@ -217,7 +225,7 @@ export default function WorldApp() {
     void loadRoute();
     return () => controller.abort();
     // A newer incident version recomputes an already-requested candidate.
-  }, [tripOpen, start, destination, mode, routeRetry, routeVersion, active?.id]);
+  }, [tripOpen, start, destination, mode, routeRetry, routeVersion, incidentAreas, active?.id]);
 
   function needAccess(action: () => void) {
     if (!access) { setModal("access"); return; }
@@ -234,7 +242,7 @@ export default function WorldApp() {
     finally { setImporting(false); }
   }
   function startTrip(point?: Place) {
-    if (!tripOpen) setMode(active ? "walking" : "driving");
+    if (!tripOpen) setMode(active && !active.resolvedAt ? "walking" : "driving");
     setTripOpen(true); setIncidentPanel(false); setShowSteps(false); setSheet(1);
     if (!tripOpen || point) resetRoute();
     if (!start && deviceOrigin) setStart(deviceOrigin);
@@ -440,7 +448,8 @@ export default function WorldApp() {
           {incidentPanel && <button type="button" className="world-nav mobile-directions" onClick={() => startTrip()}><span><Route size={17} /></span> Directions <ChevronRight size={15} /></button>}
           <button type="button" className="world-text" onClick={() => chooseIncident("")}><ArrowLeft size={15} /> All incidents</button>
           <h1>{active.name}</h1>
-          <p className="incident-caption"><span className={stale ? "sync stale" : "sync"} />{stale ? "Showing last update" : "Live incident"} · {active.roadCount.toLocaleString()} segments</p>
+          <p className="incident-caption"><span className={stale || active.resolvedAt ? "sync stale" : "sync"} />{active.resolvedAt ? "Resolved" : stale ? "Showing last update" : "Live incident"} · {active.roadCount.toLocaleString()} segments</p>
+          {!active.resolvedAt && <>
           <div className="world-action-row">
             <button className="world-secondary" type="button" onClick={() => setAerial(!aerial)} aria-pressed={aerial}><Satellite size={16} /> Aerial view</button>
             <button className="world-secondary" type="button" onClick={() => needAccess(() => setModal("survey"))}><Layers3 size={16} /> Add imagery</button>
@@ -465,6 +474,9 @@ export default function WorldApp() {
             <div><strong>{selectedRoad.label}</strong><small>{labels[selectedRoad.state]}</small></div>
             <button className="world-secondary" onClick={() => needAccess(() => setModal("report"))}>Report condition</button>
           </div> : <p className="world-hint">Select a road on the map to view or report its condition.</p>}
+          <button className="world-text" type="button" onClick={() => needAccess(() => setModal("resolve"))}>Mark area repaired…</button>
+          </>}
+          {active.resolvedAt && <button className="world-secondary" type="button" onClick={() => setModal("access")}><KeyRound size={15} /> Access key</button>}
           <h2 className="reports-title">Field reports <small>{active.reports.length}</small></h2>
           {shownReports.length ? <ul className="world-reports">{shownReports.map(report => <li key={report.id} id={`report-${report.id}`}
             tabIndex={-1} className={focusedReport === report.id ? "is-selected" : undefined}>
@@ -496,13 +508,13 @@ export default function WorldApp() {
       </div>
     </aside>}
     <section id="map-view" className="world-stage" aria-label="Map">
-      <WorldMap incidents={incidents} active={active} focus={focus} route={visibleRoute}
+      <WorldMap incidents={incidents} recoveryImagery={recoveryImagery} active={active} focus={focus} route={visibleRoute}
         start={tripOpen ? start : null} destination={tripOpen ? destination : place}
         selectedRoad={roadId} aerial={aerial} picking={!!picking} sidebarVisible={sidebar} onCamera={setCamera}
         onPoint={choosePoint} onRoad={selectRoad} onIncident={chooseIncident} onReport={selectReport} />
       {!sidebar && <button className="world-restore circle-button" aria-label="Show sidebar" onClick={() => setSidebar(true)}><PanelLeft size={18} /></button>}
       {picking && <div className="world-picking" role="status">{pickLabel}<button type="button" className="world-text" onClick={() => choosePoint(camera.center)}>Use map center</button><button type="button" className="circle-button" aria-label="Cancel map selection" onClick={() => { setPicking(null); setPoints([]); }}><X size={16} /></button></div>}
-      {active && <div className="world-legend" aria-label="Road legend"><span><i /> Unverified</span><span><i /> Open</span><span><i /> Blocked</span><span><i /> Hazard or dispute</span></div>}
+      {active && !active.resolvedAt && <div className="world-legend" aria-label="Road legend"><span><i /> Unverified</span><span><i /> Open</span><span><i /> Blocked</span><span><i /> Hazard or dispute</span></div>}
     </section>
 
     {modal === "create" && <Modal title="Report an incident" description="Mark the affected area and add an observation or photo if you have one." onClose={() => setModal(null)}>
@@ -518,6 +530,15 @@ export default function WorldApp() {
     </Modal>}
     {modal === "survey" && active && <Modal title="Add aerial imagery" description="Upload a georeferenced survey or overlapping geotagged drone photos for this incident." onClose={() => setModal(null)}>
       <SurveyUpload incident={active} access={access} onUpload={next => { applyIncident(next); setAerial(true); setModal(null); setMessage("Aerial survey added."); }} />
+    </Modal>}
+    {modal === "resolve" && active && !active.resolvedAt && <Modal title="Mark area repaired" description="Resolve this incident once someone has verified the area has recovered." onClose={() => setModal(null)}>
+      <ResolveIncident incident={active} access={access} onResolve={next => {
+        applyIncident(next);
+        const recovery = next.recoveryImagery;
+        if (recovery) setRecoveryImagery(current => [...current.filter(image => image.url !== recovery.url), recovery]);
+        setModal(null); setMessage("Incident resolved. Standard directions have resumed.");
+        void refreshList().catch(() => {});
+      }} />
     </Modal>}
   </main>;
 }

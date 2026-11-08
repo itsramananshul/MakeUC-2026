@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Layers2, Satellite } from "lucide-react";
 import { Map as MapLibreMap, NavigationControl, ScaleControl, setWorkerUrl, type GeoJSONSource, type Map as MapInstance } from "maplibre-gl";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
-import { boundsTuple, lngLat, type Coordinate, type GeographicBounds, type Incident, type IncidentRoute, type IncidentSummary } from "@/lib/incident-types";
+import { boundsTuple, lngLat, type Coordinate, type GeographicBounds, type Incident, type IncidentImagery, type IncidentRoute, type IncidentSummary } from "@/lib/incident-types";
 
 type Camera = { center: Coordinate; zoom: number };
 type Focus = { point: Coordinate; zoom?: number } | { bounds: GeographicBounds };
@@ -15,6 +15,7 @@ type Props = {
   onRoad: (id: string) => void; onIncident: (id: string) => void;
   onReport?: (id: string) => void;
   sidebarVisible?: boolean;
+  recoveryImagery?: IncidentImagery[];
   incidentPreview?: { center: Coordinate; bounds: GeographicBounds } | null;
 };
 const style = "https://tiles.openfreemap.org/styles/liberty";
@@ -91,6 +92,7 @@ function addLayers(map: MapInstance, satellite: boolean) {
 export default function WorldMap(props: Props) {
   const host = useRef<HTMLDivElement>(null);
   const map = useRef<MapInstance | null>(null);
+  const surveyLayers = useRef(new Set<string>());
   const inputs = useRef(props);
   const [ready, setReady] = useState(false);
   const [message, setMessage] = useState("");
@@ -149,7 +151,7 @@ export default function WorldMap(props: Props) {
       view.on("mouseenter", layer, () => { view.getCanvas().style.cursor = inputs.current.picking ? "" : "pointer"; });
       view.on("mouseleave", layer, () => { view.getCanvas().style.cursor = ""; });
     }
-    return () => { observer.disconnect(); map.current = null; view.remove(); };
+    return () => { observer.disconnect(); surveyLayers.current.clear(); map.current = null; view.remove(); };
   }, []);
 
   useEffect(() => {
@@ -193,17 +195,19 @@ export default function WorldMap(props: Props) {
     const view = map.current;
     if (!view || !ready) return;
     const set = (id: string, features: Feature[]) => (view.getSource(id) as GeoJSONSource).setData(collection(features));
-    set("incidents", props.incidents.filter(item => item.id !== props.active?.id).map(item => {
+    const active = props.active?.resolvedAt ? null : props.active;
+    const others = props.incidents.filter(item => item.id !== props.active?.id);
+    set("incidents", others.map(item => {
       const [west, south, east, north] = boundsTuple(item.bounds);
       return point({ latitude: (south + north) / 2, longitude: (east + west) / 2 }, { id: item.id });
     }));
     set("boundaries", props.incidentPreview ? [polygon(props.incidentPreview.bounds, { id: "preview" })] :
-      props.active ? [polygon(props.active.bounds, { id: props.active.id })] : []);
-    set("roads", (props.active?.roads ?? []).map(road => ({
+      [...others, ...(active ? [active] : [])].map(item => polygon(item.bounds, { id: item.id })));
+    set("roads", (active?.roads ?? []).map(road => ({
       type: "Feature", geometry: { type: "LineString", coordinates: [lngLat(road.from), lngLat(road.to)] },
       properties: { id: road.id, state: road.state, selected: props.selectedRoad === road.id ? "yes" : "no" },
     })));
-    set("reports", (props.active?.reports ?? []).flatMap(report =>
+    set("reports", (active?.reports ?? []).flatMap(report =>
       report.location && !report.edgeId ? [point(report.location, { id: report.id })] : []));
     set("route", props.route && props.route.coordinates.length > 1 ? [{
       type: "Feature", geometry: { type: "LineString", coordinates: props.route.coordinates.map(lngLat) },
@@ -216,28 +220,45 @@ export default function WorldMap(props: Props) {
     ]);
   }, [ready, props.incidents, props.active, props.route, props.start, props.destination, props.selectedRoad, props.incidentPreview]);
 
-  const images = props.aerial && props.active ? props.active.surveys ?? (props.active.imagery ? [props.active.imagery] : []) : [];
-  const imageKey = images.map(image => image.url).join("|");
   useEffect(() => {
-    const view = map.current;
-    if (!view || !ready || !images.length) return;
+    if (!map.current || !ready || locationPicker) return;
+    const view: MapInstance = map.current;
     const surveyBefore = view.getLayer(satelliteRoadLayer(satelliteRoads[0])) ? satelliteRoadLayer(satelliteRoads[0]) :
       view.getLayer("waterway_line_label") ? "waterway_line_label" : "incident-boundary-fill";
-    const layerIds = images.map((image, index) => {
-      const id = `after-survey-${index}`;
-      const [w, s, e, n] = boundsTuple(image.bounds);
-      view.addSource(id, { type: "image", url: image.url, coordinates: [[w, n], [e, n], [e, s], [w, s]] });
-      view.addLayer({ id, type: "raster", source: id, paint: { "raster-fade-duration": 0 } }, surveyBefore);
-      return id;
-    });
-    return () => {
-      if (map.current !== view) return;
-      for (const id of layerIds) {
-        if (view.getLayer(id)) view.removeLayer(id);
-        if (view.getSource(id)) view.removeSource(id);
+    const { active, aerial, incidents, recoveryImagery } = props;
+    const layers = surveyLayers.current;
+    function renderSurveys() {
+      const bounds = view.getBounds();
+      const showsArea = (image: IncidentImagery) => view.getZoom() >= 9 &&
+        image.bounds.west <= bounds.getEast() && image.bounds.east >= bounds.getWest() &&
+        image.bounds.south <= bounds.getNorth() && image.bounds.north >= bounds.getSouth();
+      const activeSurveys = (item: IncidentSummary) => item.surveys ?? (item.imagery ? [item.imagery] : []);
+      const images = [
+        ...(recoveryImagery ?? []).filter(showsArea),
+        ...incidents.filter(item => item.id !== active?.id).flatMap(item => activeSurveys(item).filter(showsArea)),
+        ...(aerial && active && !active.resolvedAt ? activeSurveys(active) : []),
+      ].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+      const next = new Map(images.map(image => [`after-survey-${image.url.split("/").at(-1)}`, image]));
+      if (next.size === layers.size && [...next.keys()].every(id => layers.has(id))) return;
+      for (const id of layers) if (!next.has(id)) {
+        view.removeLayer(id);
+        view.removeSource(id);
+        layers.delete(id);
       }
-    };
-  }, [imageKey, ready]);
+      for (const [id, image] of next) {
+        if (!layers.has(id)) {
+          const [w, s, e, n] = boundsTuple(image.bounds);
+          view.addSource(id, { type: "image", url: image.url, coordinates: [[w, n], [e, n], [e, s], [w, s]] });
+          view.addLayer({ id, type: "raster", source: id, paint: { "raster-fade-duration": 0 } }, surveyBefore);
+          layers.add(id);
+        } else view.moveLayer(id, surveyBefore);
+      }
+    }
+    renderSurveys();
+    view.on("moveend", renderSurveys);
+    view.on("resize", renderSurveys);
+    return () => { view.off("moveend", renderSurveys); view.off("resize", renderSurveys); };
+  }, [locationPicker, props.active, props.aerial, props.incidents, props.recoveryImagery, ready]);
 
   return <div className={`world-canvas ${props.picking ? "is-picking" : ""}`}>
     <div ref={host} className="world-map" aria-label="Interactive world map" />

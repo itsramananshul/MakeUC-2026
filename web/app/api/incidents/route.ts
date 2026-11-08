@@ -1,4 +1,4 @@
-import { createIncident, incidentList, keyMatches } from "@/lib/incident-store";
+import { createIncident, incidentList, keyMatches, publishedRecoveryImagery } from "@/lib/incident-store";
 import { bearer, failure, incidentInput, json } from "@/lib/incident-validation";
 import { RequestError } from "@/lib/store";
 import { readInput } from "@/lib/validation";
@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  try { return json({ incidents: incidentList() }); }
+  try { return json({ incidents: incidentList(), recoveryImagery: publishedRecoveryImagery() }); }
   catch (error) { return failure(error); }
 }
 export async function POST(request: Request) {
