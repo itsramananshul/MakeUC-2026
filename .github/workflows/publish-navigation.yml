@@ -1,0 +1,26 @@
+name: Publish verified Gaslight navigation
+
+on:
+  push:
+    paths:
+      - navigation.patch
+
+permissions:
+  contents: write
+
+jobs:
+  apply-navigation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Apply verified patch
+        run: git apply --index navigation.patch
+      - name: Commit source and tests
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm navigation.patch
+          git commit -m "Publish native turn-by-turn navigation"
+          git push origin HEAD:main
