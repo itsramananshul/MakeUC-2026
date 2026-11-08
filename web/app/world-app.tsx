@@ -385,7 +385,7 @@ export default function WorldApp() {
           </div>
           <div className="direction-stops">
             <PlaceFinder label="Starting point" stop="start" initialValue={start?.label}
-              autoFocus={!!destination && !start} onEdit={() => { if (start) setTripPoint("start", null); }}
+              autoFocus={!start} onEdit={() => { if (start) setTripPoint("start", null); }}
               onSelect={item => setTripPoint("start", { ...item, label: item.name })} />
             <PlaceFinder label="Destination" stop="destination" initialValue={destination?.label}
               onEdit={() => { if (destination) setTripPoint("destination", null); }}

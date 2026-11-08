@@ -105,8 +105,8 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
 .stop-finder .world-search { min-height: 52px; margin: 0; border: 0; border-radius: 0; background: transparent; padding-inline: 12px 6px; }
 .stop-finder .world-search:focus-within { outline: 2px solid #1673da; outline-offset: -2px; border-radius: 9px; }
 .stop-finder input { font-size: 15px; }
-.stop-dot { width: 14px; height: 14px; border: 4px solid #e34a59; background: #fff; border-radius: 50%; }
-.stop-finder.destination .stop-dot { border-color: #27a166; }
+.stop-dot { width: 14px; height: 14px; border: 4px solid #2678ef; background: #fff; border-radius: 50%; }
+.stop-finder.destination .stop-dot { border-color: #d94050; }
 .stop-finder .world-results, .stop-finder .direction-search-status { margin: 0 6px 5px; }
 .direction-search-status { display: block; padding: 5px 2px; color: var(--world-muted); }
 .direction-modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 16px; }
@@ -135,8 +135,8 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
 .route-maneuvers li + li { border-top: 1px solid #d5dde7; }
 .route-maneuvers li > span:last-child { display: grid; gap: 3px; overflow-wrap: anywhere; }
 .route-maneuvers small { color: #4d5d71; line-height: 1.35; }
-.maneuver-pin { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; color: #fff; background: #d6344a; }
-.maneuver-pin.destination { background: #158451; }
+.maneuver-pin { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; color: #fff; background: #2678ef; }
+.maneuver-pin.destination { background: #d94050; }
 .world-route-result { display: grid; gap: 5px; border-radius: 9px; padding: 9px; background: #e2eefc; line-height: 1.35; }
 .world-route-result.partial { background: #fff0d5; }
 .world-route-result.unavailable { background: #e9edef; }
