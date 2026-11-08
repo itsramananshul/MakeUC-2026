@@ -3,7 +3,7 @@ import { lineString } from "@turf/helpers";
 import { nearestPoint } from "./geography";
 import { incidentRoute, mappedIncidentRoute } from "./incident-route";
 import { getIncident } from "./incident-store";
-import { distanceMeters, incidentCoverage, lngLat, withinIncident, type Coordinate, type Incident, type IncidentSummary, type Road, type RouteOption } from "./incident-types";
+import { distanceMeters, incidentCoverage, lngLat, roadLegs, withinIncident, type Coordinate, type Incident, type IncidentSummary, type Road, type RouteOption } from "./incident-types";
 import { loadRoads, standardRoute } from "./osm";
 import { coveragePolygon } from "./route-boundaries";
 
@@ -46,7 +46,7 @@ export async function walkingDirections(origin: Coordinate, destination: Coordin
     });
     if (!affected.length) return option;
     const areas = affected.flatMap(incident => incident.areas);
-    const closures = affected.flatMap(({ detail }) => detail.roads.filter(closed));
+    const closures = affected.flatMap(({ detail }) => detail.roads.filter(closed).flatMap(roadLegs));
     const hazards = affected.flatMap(({ detail }) => detail.reports.flatMap(report =>
       !report.edgeId && report.location && (report.condition === "blocked" || report.condition === "hazard") ? [report.location] : []));
     const unverifiedSegments: number[] = [];
@@ -66,7 +66,7 @@ export async function walkingDirections(origin: Coordinate, destination: Coordin
   const hasReportedSegment = (route: ReturnType<typeof incidentRoute>) =>
     (route.unverifiedSegments?.length ?? 0) < route.coordinates.length - 1;
   function tryMapped(incident: Incident) {
-    const closures = incident.roads.filter(closed);
+    const closures = incident.roads.filter(closed).flatMap(roadLegs);
     const roads = incident.roads.filter(road => road.state !== "unknown" ||
       !closures.some(closure => followsClosedRoad(road.from, road.to, closure)));
     const route = mappedIncidentRoute({ ...incident, roads }, origin, destination, incidents);

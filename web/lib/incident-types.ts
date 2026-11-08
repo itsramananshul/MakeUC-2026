@@ -1,7 +1,7 @@
 export type Coordinate = { latitude: number; longitude: number };
 export type GeographicBounds = { west: number; south: number; east: number; north: number };
 export type RoadState = "unknown" | "open" | "blocked" | "hazard" | "conflict";
-export type Road = { id: string; from: Coordinate; to: Coordinate; state: RoadState; label: string };
+export type Road = { id: string; from: Coordinate; to: Coordinate; via?: Coordinate[]; state: RoadState; label: string };
 export type FieldReport = {
   id: string; displayName: string; edgeId?: string; condition?: "open" | "blocked" | "hazard";
   note: string; at: string; evidenceType: "manual" | "text" | "voice" | "image";
@@ -29,6 +29,14 @@ export type IncidentRoute = {
 };
 export const coordinateKey = (point: Coordinate) => `${point.longitude.toFixed(7)},${point.latitude.toFixed(7)}`;
 export const lngLat = (point: Coordinate): [number, number] => [point.longitude, point.latitude];
+export const roadPoints = (road: Road) => [road.from, ...(road.via ?? []), road.to];
+export function roadLegs(road: Road): Road[] {
+  if (!road.via?.length) return [road];
+  const points = roadPoints(road);
+  return points.slice(1).map((to, index) => ({
+    id: `${road.id}:${index}`, from: points[index], to, state: road.state, label: road.label,
+  }));
+}
 export const boundsTuple = (bounds: GeographicBounds): [number, number, number, number] =>
   [bounds.west, bounds.south, bounds.east, bounds.north];
 export const within = (point: Coordinate, bounds: GeographicBounds) =>

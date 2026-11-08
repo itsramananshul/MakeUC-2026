@@ -7,7 +7,7 @@ import {
 } from "./incident-types";
 
 type ReportInput = Omit<FieldReport, "at" | "evidenceUrl"> & {
-  from?: Coordinate; to?: Coordinate; photoBase64?: string; confirmed: true;
+  from?: Coordinate; to?: Coordinate; trace?: Coordinate[]; photoBase64?: string; confirmed: true;
 };
 type InitialObservation = Pick<ReportInput, "displayName" | "note" | "photoBase64">;
 type StoredIncident = Incident & { unpublishedSurveys?: IncidentImagery[] };
@@ -220,6 +220,26 @@ export function submitIncidentReport(id: string, report: ReportInput) {
 
     let road = report.edgeId ? incident.roads.find(item => item.id === report.edgeId) : undefined;
     if (report.edgeId && !road) throw new RequestError("That road segment was not found.", 404);
+    if (report.trace) {
+      if (road && !road.id.startsWith("field-")) throw new RequestError("Only a field-reported passage can be redrawn.");
+      const points = report.trace;
+      const legs = points.slice(1).map((point, index) => distanceMeters(points[index], point));
+      if (!report.condition || points.some(point => !withinIncident(point, incident)) ||
+          legs.some(length => length < 1) || legs.reduce((sum, length) => sum + length, 0) > 250) {
+        throw new RequestError("Trace up to 250 m inside the incident, with at least 1 m between points.");
+      }
+      const from = points[0], to = points[points.length - 1], via = points.slice(1, -1);
+      if (road) {
+        Object.assign(road, { from, to, via });
+      } else {
+        const id = `field-${hash(points.map(coordinateKey).join("|")).toString("hex").slice(0, 20)}`;
+        road = incident.roads.find(item => item.id === id);
+        if (!road) {
+          road = { id, from, to, via, state: "unknown", label: "Field-reported connection" };
+          incident.roads.push(road);
+        }
+      }
+    }
     if (report.from && report.to && !road && report.condition) {
       const length = distanceMeters(report.from, report.to);
       if (length < 1 || length > 250 || !withinIncident(report.from, incident) || !withinIncident(report.to, incident)) {

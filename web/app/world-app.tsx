@@ -16,7 +16,7 @@ import WorldMap from "./world-map";
 import { useLiveNavigation } from "./use-live-navigation";
 
 type Focus = { point: Coordinate; zoom?: number } | { bounds: GeographicBounds };
-type Picking = "start" | "destination" | "point" | "connection" | null;
+type Picking = "start" | "destination" | "point" | "connection" | "trace" | null;
 type ModalKind = "create" | "access" | "report" | "survey" | "remove-aerial" | "resolve" | null;
 type Stop = "start" | "destination";
 type TripPoint = Coordinate & { label: string; detail?: string };
@@ -70,6 +70,7 @@ export default function WorldApp() {
   const [modal, setModal] = useState<ModalKind>(null);
   const [picking, setPicking] = useState<Picking>(null);
   const [points, setPoints] = useState<Coordinate[]>([]);
+  const [tracing, setTracing] = useState(false);
   const [roadId, setRoadId] = useState<string | null>(null);
   const [focusedReport, setFocusedReport] = useState("");
   const [roadQuery, setRoadQuery] = useState("");
@@ -197,7 +198,7 @@ export default function WorldApp() {
   }
   function chooseIncident(id: string) {
     if (id === selected) { if (active) setFocus({ bounds: incidentExtent(active) }); return; }
-    setActive(null); setSelected(id); setRoadId(null); setFocusedReport(""); setRoadQuery(""); setPoints([]); setStale(false); setError("");
+    setActive(null); setSelected(id); setRoadId(null); setFocusedReport(""); setRoadQuery(""); setPoints([]); setTracing(false); setStale(false); setError("");
     resetRoute(); setTripOpen(false); setIncidentPanel(!!id); setPicking(null); setStart(null); setDestination(null);
     setPlace(null); setSidebar(true); setSheet(1); setMobileSearch(false);
     const url = new URL(location.href);
@@ -242,8 +243,15 @@ export default function WorldApp() {
       setTripPoint(picking, { ...point, label: "Dropped pin" });
       return;
     }
-    if (picking === "point" || picking === "connection") {
+    if (picking === "point" || picking === "connection" || picking === "trace") {
       if (active && !withinIncident(point, active)) { setError("Choose a point inside the incident or its aerial coverage."); return; }
+      if (picking === "trace") {
+        const previous = points.at(-1);
+        if (previous && distanceMeters(previous, point) < 1) { setError("Place each point at least 1 m apart."); return; }
+        if (points.length >= 24) { setError("Finish this trace before adding another passage."); return; }
+        setPoints([...points, point]); setError("");
+        return;
+      }
       if (picking === "connection" && points.length === 1 && distanceMeters(points[0], point) < 1) {
         setError("Choose a different point for the other end."); return;
       }
@@ -310,7 +318,7 @@ export default function WorldApp() {
     if (point) setDestination({ ...point, label: point.name });
   }
   function selectRoad(id: string) {
-    setRoadId(id); setPoints([]); setSidebar(true); setIncidentPanel(true);
+    setRoadId(id); setPoints([]); setTracing(false); setSidebar(true); setIncidentPanel(true);
     setSheet(value => Math.max(1, value));
   }
   function selectReport(id: string) {
@@ -323,7 +331,11 @@ export default function WorldApp() {
       card?.scrollIntoView({ block: "nearest" });
     });
   }
-  const pickLabel = picking === "start" ? "Choose a starting point" : picking === "destination" ? "Choose a destination" :
+  function beginTrace(road: string | null) {
+    needAccess(() => { setRoadId(road); setPoints([]); setTracing(true); setError(""); setPicking("trace"); });
+  }
+  const pickLabel = picking === "trace" ? (points.length ? "Tap along the passage, then finish" : "Choose the start of the passage") :
+    picking === "start" ? "Choose a starting point" : picking === "destination" ? "Choose a destination" :
     picking === "point" ? "Choose a report location" : points.length ? "Choose the end of the passage" : "Choose the start of the passage";
   const directionsVisible = tripOpen && !incidentPanel;
   const searchVisible = !directionsVisible && !incidentPanel;
@@ -576,8 +588,9 @@ export default function WorldApp() {
             <button className="world-secondary" type="button" onClick={() => setModal("access")}><KeyRound size={15} /> Access key</button>
           </div>
           <div className="world-action-row">
-            <button className="world-text" type="button" onClick={() => needAccess(() => { setPoints([]); setPicking("point"); })}><MapPin size={15} /> Report a point</button>
-            <button className="world-text" type="button" onClick={() => needAccess(() => { setPoints([]); setPicking("connection"); })}><Plus size={15} /> Add passage</button>
+            <button className="world-text" type="button" onClick={() => needAccess(() => { setTracing(false); setPoints([]); setPicking("point"); })}><MapPin size={15} /> Report a point</button>
+            <button className="world-text" type="button" onClick={() => needAccess(() => { setTracing(false); setPoints([]); setPicking("connection"); })}><Plus size={15} /> Add passage</button>
+            <button className="world-text" type="button" onClick={() => beginTrace(null)}>Trace passage</button>
           </div>
           {!!active.roadCount && <div className="road-finder">
             <input aria-label="Find an incident road" placeholder="Find a road in this area…" value={roadQuery} onChange={event => setRoadQuery(event.target.value)} />
@@ -588,7 +601,8 @@ export default function WorldApp() {
           </div>}
           {selectedRoad ? <div className="selected-road">
             <div><strong>{selectedRoad.label}</strong><small>{labels[selectedRoad.state]}</small></div>
-            <button className="world-secondary" onClick={() => needAccess(() => setModal("report"))}>Report condition</button>
+            <button className="world-secondary" onClick={() => needAccess(() => { setTracing(false); setPoints([]); setModal("report"); })}>Report condition</button>
+            {selectedRoad.id.startsWith("field-") && <button className="world-text" type="button" onClick={() => beginTrace(selectedRoad.id)}>Redraw passage</button>}
           </div> : <p className="world-hint">Select a road on the map to view or report its condition.</p>}
           <button className="world-text" type="button" onClick={() => needAccess(() => setModal("resolve"))}>Mark area repaired…</button>
           </>}
@@ -632,10 +646,15 @@ export default function WorldApp() {
         navigationZoom={liveTrip && followNavigation ? navigationLimits[liveTrip.mode].zoom : undefined}
         onFreePan={() => setFollowNavigation(false)}
         start={tripOpen && !liveTrip ? start : null} destination={tripOpen ? destination : place}
-        selectedRoad={roadId} aerial={aerial} picking={!!picking} sidebarVisible={sidebar} onCamera={setCamera}
+        selectedRoad={roadId} aerial={aerial} picking={!!picking} draftPassage={picking === "trace" ? points : undefined} sidebarVisible={sidebar} onCamera={setCamera}
         onPoint={choosePoint} onRoad={selectRoad} onIncident={chooseIncident} onReport={selectReport} />
       {!sidebar && <button className="world-restore circle-button" aria-label="Show sidebar" onClick={() => setSidebar(true)}><PanelLeft size={18} /></button>}
-      {picking && <div className="world-picking" role="status">{pickLabel}<button type="button" className="world-text" onClick={() => choosePoint(camera.center)}>Use map center</button><button type="button" className="circle-button" aria-label="Cancel map selection" onClick={() => { setPicking(null); setPoints([]); }}><X size={16} /></button></div>}
+      {picking && <div className={picking === "trace" ? "world-picking world-tracing" : "world-picking"}><span role="status">{pickLabel}</span>
+        <button type="button" className="world-text" onClick={() => choosePoint(camera.center)}>Use map center</button>
+        {picking === "trace" && points.length > 0 && <button type="button" className="world-text" onClick={() => setPoints(points.slice(0, -1))}>Undo point</button>}
+        {picking === "trace" && points.length >= 2 && <button type="button" className="world-text" onClick={() => { setPicking(null); setModal("report"); }}>Finish trace</button>}
+        <button type="button" className="circle-button" aria-label="Cancel map selection" onClick={() => { setPicking(null); setPoints([]); setTracing(false); }}><X size={16} /></button>
+      </div>}
       {active && !active.resolvedAt && <div className="world-legend" aria-label="Road legend"><span><i /> Unverified</span><span><i /> Open</span><span><i /> Blocked</span><span><i /> Hazard or dispute</span></div>}
     </section>
 
@@ -645,9 +664,9 @@ export default function WorldApp() {
     {modal === "access" && active && <Modal title="Incident access" description="Use the incident key to submit reports, import roads, or upload imagery." onClose={() => setModal(null)}>
       <AccessKey current={access} onSave={key => { changeAccess(key); setModal(null); }} />
     </Modal>}
-    {modal === "report" && active && <Modal title="Confirm field report" description={selectedRoad?.label ?? (points.length === 2 ? "New connection between the selected points." : "Observation at the selected location.")} onClose={() => setModal(null)}>
-      <ReportIncident incident={active} road={selectedRoad} points={points} access={access} onReport={next => {
-        applyIncident(next); setModal(null); setPoints([]); setMessage("Field report recorded.");
+    {modal === "report" && active && <Modal title="Confirm field report" description={tracing ? "Confirm the condition along the traced passage." : selectedRoad?.label ?? (points.length === 2 ? "New connection between the selected points." : "Observation at the selected location.")} onClose={() => { setModal(null); setTracing(false); setPoints([]); }}>
+      <ReportIncident incident={active} road={selectedRoad} points={points} trace={tracing} access={access} onReport={next => {
+        applyIncident(next); setModal(null); setPoints([]); setTracing(false); setMessage("Field report recorded.");
       }} />
     </Modal>}
     {modal === "survey" && active && <Modal title="Add aerial imagery" description="Upload a georeferenced survey or overlapping geotagged drone photos for this incident." onClose={() => setModal(null)}>

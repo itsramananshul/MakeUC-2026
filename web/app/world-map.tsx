@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Layers2, Satellite } from "lucide-react";
 import { Map as MapLibreMap, NavigationControl, ScaleControl, setWorkerUrl, type GeoJSONSource, type Map as MapInstance } from "maplibre-gl";
 import type { Feature, FeatureCollection, Geometry, LineString } from "geojson";
-import { boundsTuple, incidentCoverage, lngLat, type Coordinate, type GeographicBounds, type Incident, type IncidentImagery, type IncidentRoute, type IncidentSummary, type SurveyRaster } from "@/lib/incident-types";
+import { boundsTuple, incidentCoverage, lngLat, roadPoints, type Coordinate, type GeographicBounds, type Incident, type IncidentImagery, type IncidentRoute, type IncidentSummary, type SurveyRaster } from "@/lib/incident-types";
 
 type Camera = { center: Coordinate; zoom: number };
 type Focus = { point: Coordinate; zoom?: number } | { bounds: GeographicBounds };
@@ -16,6 +16,7 @@ type Props = {
   onReport?: (id: string) => void;
   sidebarVisible?: boolean;
   recoveryImagery?: IncidentImagery[];
+  draftPassage?: Coordinate[];
   navigationPosition?: Coordinate;
   navigationZoom?: number;
   onFreePan?: () => void;
@@ -59,7 +60,7 @@ function addSatellite(map: MapInstance) {
 
 function addLayers(map: MapInstance, satellite: boolean) {
   if (satellite) addSatellite(map);
-  for (const id of ["incidents", "boundaries", "roads", "route", "markers", "reports"]) {
+  for (const id of ["incidents", "boundaries", "roads", "route", "markers", "reports", "passage-draft"]) {
     map.addSource(id, { type: "geojson", data: collection() });
   }
   map.addLayer({ id: "incident-boundary-fill", type: "fill", source: "boundaries",
@@ -74,6 +75,11 @@ function addLayers(map: MapInstance, satellite: boolean) {
       "line-opacity": ["case", ["==", ["get", "state"], "unknown"], .57, .95],
       "line-width": ["case", ["==", ["get", "selected"], "yes"], 7, ["==", ["get", "state"], "unknown"], 2, 4],
     } });
+  map.addLayer({ id: "passage-draft-line", type: "line", source: "passage-draft",
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": "#fff", "line-width": 4, "line-dasharray": [1, 1] } });
+  map.addLayer({ id: "passage-draft-points", type: "circle", source: "passage-draft",
+    paint: { "circle-color": "#176df1", "circle-radius": 5, "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
   map.addLayer({ id: "reported-points", type: "circle", source: "reports", paint: {
     "circle-color": "#dd8122", "circle-radius": 6, "circle-stroke-color": "#fff", "circle-stroke-width": 2,
   } });
@@ -229,7 +235,7 @@ export default function WorldMap(props: Props) {
         return (areas.length > 1 ? areas.slice(1) : areas).map(bounds => polygon(bounds, { id: item.id }));
       }));
     set("roads", (active?.roads ?? []).map(road => ({
-      type: "Feature", geometry: { type: "LineString", coordinates: [lngLat(road.from), lngLat(road.to)] },
+      type: "Feature", geometry: { type: "LineString", coordinates: roadPoints(road).map(lngLat) },
       properties: { id: road.id, state: road.state, selected: props.selectedRoad === road.id ? "yes" : "no" },
     })));
     set("reports", (active?.reports ?? []).flatMap(report =>
@@ -250,6 +256,16 @@ export default function WorldMap(props: Props) {
     }
     set("route", lines);
   }, [ready, props.incidents, props.active, props.route, props.selectedRoad, props.incidentPreview]);
+
+  useEffect(() => {
+    if (!ready || !map.current) return;
+    const points = props.draftPassage ?? [];
+    const features = points.map(coordinate => point(coordinate, {}));
+    if (points.length > 1) features.unshift({
+      type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: points.map(lngLat) },
+    });
+    (map.current.getSource("passage-draft") as GeoJSONSource).setData(collection(features));
+  }, [ready, props.draftPassage]);
 
   useEffect(() => {
     if (!ready || !map.current) return;

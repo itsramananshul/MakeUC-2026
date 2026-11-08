@@ -280,12 +280,14 @@ function EvidencePhoto({ photo, onChange, onBusy }: {
   </div>;
 }
 
-export function ReportIncident({ incident, road, points, access, onReport }: {
-  incident: Incident; road: Road | null; points: Coordinate[]; access: string; onReport: (incident: Incident) => void;
+export function ReportIncident({ incident, road, points, trace, access, onReport }: {
+  incident: Incident; road: Road | null; points: Coordinate[]; trace: boolean; access: string; onReport: (incident: Incident) => void;
 }) {
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
-  const [condition, setCondition] = useState<"open" | "blocked" | "hazard">("open");
+  const [condition, setCondition] = useState<"open" | "blocked" | "hazard">(
+    trace && road?.state === "blocked" ? "blocked" : trace && road?.state === "hazard" ? "hazard" : "open",
+  );
   const [photo, setPhoto] = useState<string | null>(null);
   const [preparingPhoto, setPreparingPhoto] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -300,9 +302,10 @@ export function ReportIncident({ incident, road, points, access, onReport }: {
       reportId.current ??= crypto.randomUUID();
       const result = await postJson<{ incident: Incident }>(incidentPath(incident.id, "reports"), {
         id: reportId.current, displayName: name, note,
-        edgeId: road?.id, condition: road || points.length === 2 ? condition : undefined,
+        edgeId: road?.id, condition: road || points.length >= 2 ? condition : undefined,
         location: points.length === 1 ? points[0] : undefined,
-        from: points.length === 2 ? points[0] : undefined, to: points.length === 2 ? points[1] : undefined,
+        from: !trace && points.length === 2 ? points[0] : undefined, to: !trace && points.length === 2 ? points[1] : undefined,
+        trace: trace ? points : undefined,
         evidenceType: photo ? "image" : note.trim() ? "text" : "manual",
         photoBase64: photo ?? undefined, confirmed: true,
       }, access);
@@ -313,7 +316,7 @@ export function ReportIncident({ incident, road, points, access, onReport }: {
 
   return <form className="incident-form" onSubmit={submit}>
     <label>Reporter name<input required maxLength={40} value={name} onChange={event => setName(event.target.value)} placeholder="Name or team callsign…" /></label>
-    {(road || points.length === 2) && <label>Observed condition<select value={condition} onChange={event => setCondition(event.target.value as typeof condition)}>
+    {(road || points.length >= 2) && <label>Observed condition<select value={condition} onChange={event => setCondition(event.target.value as typeof condition)}>
       <option value="open">Reported open</option><option value="blocked">Blocked</option><option value="hazard">Suspected hazard</option>
     </select></label>}
     <label>What did you observe?<textarea value={note} required={!road && points.length === 1 && !photo} maxLength={800} rows={3} onChange={event => setNote(event.target.value)} placeholder="Add details other responders should know…" /></label>

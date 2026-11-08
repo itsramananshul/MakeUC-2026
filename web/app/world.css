@@ -183,6 +183,7 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
   background: #ffffffee; border: 1px solid #d6dfe3; border-radius: 10px; padding: 6px 8px; box-shadow: 0 3px 14px #253b4826; }
 .world-picking { top: 17px; left: 50%; transform: translateX(-50%); font-size: 13px; font-weight: 650; }
 .world-picking .circle-button { width: 25px; height: 25px; }
+.world-tracing { flex-wrap: wrap; justify-content: center; }
 .world-restore { position: absolute; top: 17px; left: 15px; z-index: 1; background: #fff; box-shadow: 0 3px 14px #253b4826; }
 .world-legend { bottom: 41px; left: 12px; font-size: 11px; max-width: calc(100% - 24px); flex-wrap: wrap; }
 .world-legend span { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
@@ -327,6 +328,8 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
   .world-legend { bottom: 56px; }
   .world-stage:has(.maplibregl-compact-show) .world-legend { bottom: 110px; }
   .world-picking { width: max-content; max-width: calc(100% - 100px); }
+  .world-tracing button, .world-tracing .circle-button { min-height: 44px; }
+  .world-tracing .circle-button { min-width: 44px; }
 }
 .road-finder { margin: 8px 0; }
 .road-finder input { width: 100%; padding: 8px; color: #17212b; background: #fff; border: 1px solid #d5dee4; border-radius: 8px; }

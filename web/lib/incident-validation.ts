@@ -32,9 +32,10 @@ export const reportInput = z.object({
   note: reportNote,
   evidenceType: z.enum(["manual", "text", "voice", "image"]),
   location: coordinate.optional(), from: coordinate.optional(), to: coordinate.optional(),
+  trace: z.array(coordinate).min(2).max(24).optional(),
   photoBase64: reportPhoto,
   confirmed: z.literal(true),
-}).refine(report => !!report.edgeId || !!report.location || !!(report.from && report.to), "Choose a passage or location.");
+}).refine(report => !!report.edgeId || !!report.location || !!report.trace || !!(report.from && report.to), "Choose a passage or location.");
 
 export const bearer = (request: Request) => request.headers.get("authorization")?.match(/^Bearer ([^\s]{1,256})$/i)?.[1] ?? "";
 export function json(body: unknown, status = 200) {

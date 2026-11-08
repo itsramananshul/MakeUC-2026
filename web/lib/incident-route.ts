@@ -1,7 +1,7 @@
 import { UndirectedGraph } from "graphology";
 import { bidirectional, singleSource } from "graphology-shortest-path/dijkstra";
 import { nearestPoint } from "./geography";
-import { coordinateKey, distanceMeters, withinIncident, type Coordinate, type Incident, type IncidentRoute, type IncidentSummary, type Road } from "./incident-types";
+import { coordinateKey, distanceMeters, roadLegs, withinIncident, type Coordinate, type Incident, type IncidentRoute, type IncidentSummary, type Road } from "./incident-types";
 import { crossesIncident } from "./route-boundaries";
 
 type Node = Coordinate & { label: string };
@@ -46,15 +46,17 @@ function findRoute(incident: Incident, origin: Coordinate, destination: Coordina
   if (distanceMeters(origin, destination) < 1) return noRoute("Choose a different destination.");
   const graph: Graph = new UndirectedGraph();
   const segmentKey = (road: Road) => [coordinateKey(road.from), coordinateKey(road.to)].sort().join("|");
-  const excluded = preview ? new Set(incident.roads.filter(road => road.state !== "open" && road.state !== "unknown").map(segmentKey)) : null;
-  const usable = incident.roads.filter(road => (road.state === "open" || (preview && road.state === "unknown")) &&
+  const segments = incident.roads.flatMap(roadLegs);
+  const excluded = preview ? new Set(segments.filter(road => road.state !== "open" && road.state !== "unknown").map(segmentKey)) : null;
+  const usable = segments.filter(road => (road.state === "open" || (preview && road.state === "unknown")) &&
     !excluded?.has(segmentKey(road)));
   if (preview) usable.sort((a, b) => Number(b.state === "open") - Number(a.state === "open"));
   for (const road of usable) link(graph, add(graph, road.from, road.label), add(graph, road.to, road.label), road.state !== "open");
   if (preview) {
     const streets = usable.filter(road => road.id.startsWith("osm-"));
-    for (const passage of usable.filter(road => road.state === "open" && road.id.startsWith("field-"))) {
+    for (const passage of incident.roads.filter(road => road.state === "open" && road.id.startsWith("field-"))) {
       for (const end of [passage.from, passage.to]) {
+        if (!graph.hasNode(coordinateKey(end))) continue;
         const snap = project(end, streets);
         if (!snap || snap.gap > 12) continue;
         const junction = add(graph, snap.point, snap.road.label);
@@ -64,7 +66,7 @@ function findRoute(incident: Incident, origin: Coordinate, destination: Coordina
       }
     }
   }
-  const snappingRoads = preview ? usable : incident.roads;
+  const snappingRoads = preview ? usable : segments;
   const start = project(origin, snappingRoads), finish = project(destination, snappingRoads);
   if (!start || (!preview && start.road.state !== "open") || start.gap > 20) {
     return noRoute("The starting point is not close enough to a reported open passage.");
