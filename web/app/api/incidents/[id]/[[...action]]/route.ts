@@ -126,10 +126,19 @@ export async function POST(request: Request, context: Context) {
       if (!files.length || files.length > 8 || files.some(file => !/\.tiff?$/i.test(file.name))) {
         throw new RequestError("Choose one to eight georeferenced TIFF files.");
       }
+      const requestedSource = typeof data.get("source") === "string" ? String(data.get("source")).trim() : "";
+      if (requestedSource.length > 160 || /[\u0000-\u001f\u007f]/.test(requestedSource)) {
+        throw new RequestError("Keep the imagery source under 160 characters without control characters.");
+      }
+      const requestedTimestamp = typeof data.get("timestamp") === "string" ? String(data.get("timestamp")).trim() : "";
+      const acquiredAt = requestedTimestamp ? new Date(requestedTimestamp) : new Date();
+      if (!Number.isFinite(acquiredAt.getTime()) || acquiredAt.getTime() < 0 || acquiredAt.getTime() > Date.now() + 86_400_000) {
+        throw new RequestError("Enter a valid imagery acquisition date that is not in the future.");
+      }
       const result = await mosaic(await Promise.all(files.map(file => file.arrayBuffer())), false);
       const incident = saveIncidentImage(id, result.bytes, {
-        bounds: geographicBounds(result.bounds), timestamp: new Date().toISOString(),
-        source: files.length === 1 ? "Uploaded GeoTIFF" : `${files.length} uploaded GeoTIFFs`,
+        bounds: geographicBounds(result.bounds), timestamp: acquiredAt.toISOString(),
+        source: requestedSource || (files.length === 1 ? "Uploaded GeoTIFF" : `${files.length} uploaded GeoTIFFs`),
       }, undefined, result.detail?.map(tile => ({ bounds: geographicBounds(tile.bounds), bytes: tile.bytes })));
       return json({ incident });
     }

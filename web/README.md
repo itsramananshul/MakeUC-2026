@@ -48,7 +48,7 @@ For a fresh Compose deployment, set `AFTERMAP_OPERATOR_KEY` in the host's runtim
 - `GET /api/incidents` lists incidents. `POST /api/incidents` creates an incident and returns its access key.
 - `GET /api/incidents/{id}` returns the current incident snapshot, roads, reports, and imagery.
 - `POST /api/incidents/{id}/roads` imports streets. `POST /api/incidents/{id}/reports` accepts a confirmed report.
-- `POST /api/incidents/{id}/imagery` imports GeoTIFFs. `POST /api/incidents/{id}/imagery/raw` starts a drone job.
-- `GET /api/places?q=...` searches for a place. `POST /api/routes` returns a walking route or an explanation of the evidence gap.
+- `POST /api/incidents/{id}/imagery` imports GeoTIFFs. Authenticated multipart uploads may include `source` (provider/product/provenance) and `timestamp` (the ISO-8601 acquisition time); omitting them retains the legacy upload label and current-time behavior. `POST /api/incidents/{id}/imagery/raw` starts a drone job.
+- `GET /api/places?q=...` searches for a place. `GET /api/places/exact?q=...` checks the shared canonical-place registry without calling the external geocoder, allowing web and native clients to resolve explicitly registered cities identically. `POST /api/routes` returns a walking route or an explanation of the evidence gap.
 
 See the route handlers under `app/api` and the shared incident types in `lib/incident-types.ts` for the request shapes.

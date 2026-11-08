@@ -261,6 +261,10 @@ final class AftermapTests: XCTestCase {
             XCTAssertTrue(request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data; boundary=") == true)
             let body = try requestBody(request)
             let text = String(decoding: body, as: UTF8.self)
+            XCTAssertTrue(text.contains("name=\"source\""))
+            XCTAssertTrue(text.contains("Copernicus Sentinel-2 L2A"))
+            XCTAssertTrue(text.contains("name=\"timestamp\""))
+            XCTAssertTrue(text.contains("2024-06-23T10:15:30Z"))
             XCTAssertTrue(text.contains("name=\"files\"; filename=\"survey.tif\""))
             XCTAssertTrue(text.contains("Content-Type: image/tiff"))
             XCTAssertTrue(text.contains("TIFF-BYTES"))
@@ -271,7 +275,9 @@ final class AftermapTests: XCTestCase {
             .uploadGeoTIFFs(
                 incidentId: "flood-1",
                 key: "incident-secret",
-                files: [IncidentSurveyFile(name: "survey.tif", data: Data("TIFF-BYTES".utf8))]
+                files: [IncidentSurveyFile(name: "survey.tif", data: Data("TIFF-BYTES".utf8))],
+                source: "Copernicus Sentinel-2 L2A",
+                timestamp: try XCTUnwrap(ISO8601DateFormatter().date(from: "2024-06-23T10:15:30Z"))
             )
 
         XCTAssertEqual(detail.imagery?.source, "Uploaded GeoTIFF")
@@ -486,12 +492,62 @@ final class AftermapTests: XCTestCase {
         XCTAssertEqual(places.first?.id, "nyc")
     }
 
+    func testExactPlaceSearchUsesCanonicalEndpoint() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        MockURLProtocol.handler = { request in
+            let items = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            let query = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
+            XCTAssertEqual(query["q"], "Catia La Mar")
+            XCTAssertEqual(request.url?.path, "/api/places/exact")
+            let data = #"{"places":[{"id":"canonical-ve-catia-la-mar","name":"Catia La Mar","detail":"Vargas, Venezuela","latitude":10.5992669,"longitude":-67.0145106}]}"#.data(using: .utf8)!
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
+        }
+
+        let places = try await IncidentAPIClient(baseURL: "https://aftermap.example", urlSession: session)
+            .canonicalPlaces(query: "Catia La Mar")
+
+        XCTAssertEqual(places.map(\.id), ["canonical-ve-catia-la-mar"])
+    }
+
+    @MainActor
+    func testEndpointSearchUsesSharedCanonicalCatiaPlace() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        MockURLProtocol.handler = { request in
+            let items = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            let query = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
+            XCTAssertEqual(query["q"], "Catia La Mar")
+            XCTAssertEqual(request.url?.path, "/api/places/exact")
+            let data = #"{"places":[{"id":"canonical-ve-catia-la-mar","name":"Catia La Mar","detail":"Vargas, Venezuela","latitude":10.5992669,"longitude":-67.0145106}]}"#.data(using: .utf8)!
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
+        }
+        let suite = "AFTERMAP.CanonicalPlace.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("https://aftermap.example", forKey: "aftermap.serverURL")
+        let store = WorldMapStore(defaults: defaults, urlSession: session)
+
+        let results = try await store.endpointPlaces(query: "Catia La Mar")
+
+        XCTAssertEqual(results.map(\.id), ["canonical-ve-catia-la-mar"])
+        let place = try XCTUnwrap(results.first)
+        XCTAssertEqual(place.coordinate.latitude, 10.5992669, accuracy: 0.000_000_1)
+        XCTAssertEqual(place.coordinate.longitude, -67.0145106, accuracy: 0.000_000_1)
+    }
+
     @MainActor
     func testEndpointSearchUsesLiveLocationAndRanksNearestResultFirst() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
         let session = URLSession(configuration: configuration)
         MockURLProtocol.handler = { request in
+            if request.url?.path == "/api/places/exact" {
+                let data = #"{"places":[]}"#.data(using: .utf8)!
+                return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
+            }
             let items = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
             let query = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
             XCTAssertEqual(query["q"], "BMV")

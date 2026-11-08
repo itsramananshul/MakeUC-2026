@@ -23,7 +23,15 @@ struct IncidentAPIClient {
     }
 
     func places(query: String, near coordinate: IncidentCoordinate? = nil) async throws -> [PlaceResult] {
-        guard var components = URLComponents(url: try endpoint("api/places"), resolvingAgainstBaseURL: false) else {
+        try await placeResults(path: "api/places", query: query, near: coordinate)
+    }
+
+    func canonicalPlaces(query: String) async throws -> [PlaceResult] {
+        try await placeResults(path: "api/places/exact", query: query, near: nil)
+    }
+
+    private func placeResults(path: String, query: String, near coordinate: IncidentCoordinate?) async throws -> [PlaceResult] {
+        guard var components = URLComponents(url: try endpoint(path), resolvingAgainstBaseURL: false) else {
             throw AftermapAPIError.invalidServerURL
         }
         components.queryItems = [URLQueryItem(name: "q", value: query)]
@@ -70,9 +78,27 @@ struct IncidentAPIClient {
         )
     }
 
-    func uploadGeoTIFFs(incidentId: String, key: String, files: [IncidentSurveyFile]) async throws -> IncidentDetail {
+    func uploadGeoTIFFs(
+        incidentId: String,
+        key: String,
+        files: [IncidentSurveyFile],
+        source: String? = nil,
+        timestamp: Date? = nil
+    ) async throws -> IncidentDetail {
         let boundary = "Aftermap-\(UUID().uuidString)"
         var body = Data()
+        func appendField(name: String, value: String) {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
+            body.append(value.data(using: .utf8)!)
+            body.append("\r\n".data(using: .utf8)!)
+        }
+        if let source = source?.trimmingCharacters(in: .whitespacesAndNewlines), !source.isEmpty {
+            appendField(name: "source", value: source)
+        }
+        if let timestamp {
+            appendField(name: "timestamp", value: ISO8601DateFormatter().string(from: timestamp))
+        }
         for file in files {
             let safeName = file.name
                 .replacingOccurrences(of: "\"", with: "_")

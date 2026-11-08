@@ -334,6 +334,8 @@ export function SurveyUpload({ incident, access, onUpload }: {
 }) {
   const [mode, setMode] = useState<"tiff" | "raw">("tiff");
   const [files, setFiles] = useState<File[]>([]);
+  const [source, setSource] = useState("");
+  const [acquiredAt, setAcquiredAt] = useState("");
   const [job, setJob] = useState<Job | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -379,6 +381,8 @@ export function SurveyUpload({ incident, access, onUpload }: {
     try {
       const form = new FormData();
       files.forEach(file => form.append("files", file));
+      if (mode === "tiff" && source.trim()) form.append("source", source.trim());
+      if (mode === "tiff" && acquiredAt) form.append("timestamp", new Date(acquiredAt).toISOString());
       const init = { method: "POST", body: form, headers: { Authorization: `Bearer ${access}` } };
       if (mode === "raw") {
         const next = await fetchJson<Job>(incidentPath(incident.id, "imagery/raw"), init);
@@ -402,6 +406,12 @@ export function SurveyUpload({ incident, access, onUpload }: {
       <input type="file" multiple disabled={busy || processing} accept={mode === "tiff" ? ".tif,.tiff" : ".jpg,.jpeg,.png"}
         onChange={event => setFiles(Array.from(event.target.files ?? []))} />
     </label>
+    {mode === "tiff" && <>
+      <label>Imagery source<input maxLength={160} value={source} onChange={event => setSource(event.target.value)}
+        placeholder="Provider, product, and provenance…" /></label>
+      <label>Acquired at<input type="datetime-local" value={acquiredAt}
+        onChange={event => setAcquiredAt(event.target.value)} /></label>
+    </>}
     {processing && <p role="status">Processing aerial survey{job.progress === undefined ? "…" : ` · ${Math.round(job.progress)}%`}</p>}
     {error && <p className="incident-error" role="alert">{error}</p>}
     <button className="world-primary" type="submit" disabled={!files.length || busy || processing}>{busy ? "Uploading…" : "Upload survey"}</button>

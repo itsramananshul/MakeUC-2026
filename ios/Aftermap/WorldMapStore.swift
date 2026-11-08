@@ -359,6 +359,9 @@ final class WorldMapStore: ObservableObject {
     }
 
     private func fetchPlaces(term: String, revision: Int) async throws -> [PlaceResult] {
+        if let canonical = await sharedCanonicalPlaces(term: term), !canonical.isEmpty {
+            return canonical
+        }
         if shouldUseNativePlaceSearch,
            let native = try? await NativePlaceSearch.places(query: term, near: searchReferenceCoordinate),
            !native.isEmpty {
@@ -467,6 +470,9 @@ final class WorldMapStore: ObservableObject {
             )]
         }
 #endif
+        if let canonical = await sharedCanonicalPlaces(term: term), !canonical.isEmpty {
+            return canonical
+        }
         if shouldUseNativePlaceSearch,
            let native = try? await NativePlaceSearch.places(query: term, near: searchReferenceCoordinate),
            !native.isEmpty {
@@ -489,6 +495,12 @@ final class WorldMapStore: ObservableObject {
             .joined(separator: " ")
             .lowercased()
         return !["demo", "exercise", "simulation", "simulated"].contains(where: descriptor.contains)
+    }
+
+    private func sharedCanonicalPlaces(term: String) async -> [PlaceResult]? {
+        guard let places = try? await client.canonicalPlaces(query: term) else { return nil }
+        let canonical = places.filter { $0.id.hasPrefix("canonical-") }
+        return canonical.isEmpty ? nil : sortPlacesByDistance(canonical)
     }
 
     func chooseCoordinate(_ coordinate: CLLocationCoordinate2D) {
