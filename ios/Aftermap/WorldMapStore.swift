@@ -53,13 +53,15 @@ final class WorldMapStore: ObservableObject {
     @Published private(set) var reportLocationRevision = 0
 
     private let defaults: UserDefaults
+    private let urlSession: URLSession
     private var cameraRevision = 0
     private enum PendingLocationUse { case origin, report }
     private var pendingLocationUse: PendingLocationUse?
     private var isIncidentPreviewMode = false
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, urlSession: URLSession = .shared) {
         self.defaults = defaults
+        self.urlSession = urlSession
         if let savedServer = defaults.string(forKey: "aftermap.serverURL"),
            URL(string: savedServer)?.host != "aftermap-makeuc.vercel.app" {
             serverURL = savedServer
@@ -109,7 +111,7 @@ final class WorldMapStore: ObservableObject {
 #endif
     }
 
-    var client: IncidentAPIClient { IncidentAPIClient(baseURL: serverURL) }
+    var client: IncidentAPIClient { IncidentAPIClient(baseURL: serverURL, urlSession: urlSession) }
 
     func run() async {
         if isIncidentPreviewMode { return }
@@ -159,6 +161,11 @@ final class WorldMapStore: ObservableObject {
             return
         }
         isSearching = true
+        defer {
+            if query.trimmingCharacters(in: .whitespacesAndNewlines) == term {
+                isSearching = false
+            }
+        }
         do {
             try await Task.sleep(for: .milliseconds(250))
             guard !Task.isCancelled else { return }
@@ -166,10 +173,10 @@ final class WorldMapStore: ObservableObject {
         } catch is CancellationError {
             return
         } catch {
+            guard !Task.isCancelled else { return }
             places = []
             notice = error.localizedDescription
         }
-        isSearching = false
     }
 
     func choosePlace(_ place: PlaceResult) {

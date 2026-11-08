@@ -91,7 +91,9 @@ struct IncidentAPIClient {
             }
             do { return try JSONDecoder().decode(Response.self, from: data) }
             catch { throw AftermapAPIError.backend("Could not read the incident response: \(error.localizedDescription)") }
-        } catch let error as AftermapAPIError { throw error }
+        } catch is CancellationError { throw CancellationError() }
+        catch let error as URLError where error.code == .cancelled { throw CancellationError() }
+        catch let error as AftermapAPIError { throw error }
         catch { throw AftermapAPIError.transport(error.localizedDescription) }
     }
 
@@ -112,7 +114,9 @@ struct IncidentAPIClient {
                 }
                 throw AftermapAPIError.backend("Server error \(http.statusCode).")
             }
-        } catch let error as AftermapAPIError { throw error }
+        } catch is CancellationError { throw CancellationError() }
+        catch let error as URLError where error.code == .cancelled { throw CancellationError() }
+        catch let error as AftermapAPIError { throw error }
         catch { throw AftermapAPIError.transport(error.localizedDescription) }
     }
 }

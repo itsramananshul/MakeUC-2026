@@ -211,6 +211,25 @@ final class AftermapTests: XCTestCase {
         XCTAssertEqual(places.first?.id, "nyc")
     }
 
+    @MainActor
+    func testCanceledPlaceSearchDoesNotShowAnAlert() async {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        MockURLProtocol.handler = { _ in throw URLError(.cancelled) }
+        let suite = "GaslightMaps.SearchCancellation.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = WorldMapStore(defaults: defaults, urlSession: session)
+        store.query = "Cincinnati"
+
+        await store.search()
+
+        XCTAssertNil(store.notice)
+        XCTAssertTrue(store.places.isEmpty)
+        XCTAssertFalse(store.isSearching)
+    }
+
     func testLiveWorldContract() async throws {
         guard let serverURL = ProcessInfo.processInfo.environment["AFTERMAP_LIVE_WORLD_URL"], !serverURL.isEmpty else {
             throw XCTSkip("Set AFTERMAP_LIVE_WORLD_URL to opt into the read-only production contract check.")
