@@ -131,6 +131,37 @@ final class AftermapTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: "aftermap.mapStyle"), "streets")
     }
 
+    @MainActor
+    func testExpiredDevelopmentServerMigratesToProduction() {
+        for staleServer in [
+            "https://guardian-administrative-percent-attention.trycloudflare.com",
+            "https://aftermap-makeuc.vercel.app",
+            "http://localhost:3000",
+        ] {
+            let suite = "AFTERMAP.ServerMigration.\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suite)!
+            defer { defaults.removePersistentDomain(forName: suite) }
+            defaults.set(staleServer, forKey: "aftermap.serverURL")
+
+            let store = WorldMapStore(defaults: defaults)
+
+            XCTAssertEqual(store.serverURL, WorldMapStore.productionServerURL)
+            XCTAssertEqual(defaults.string(forKey: "aftermap.serverURL"), WorldMapStore.productionServerURL)
+        }
+    }
+
+    @MainActor
+    func testCustomProductionServerIsPreserved() {
+        let suite = "AFTERMAP.CustomServer.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("https://maps.example.org", forKey: "aftermap.serverURL")
+
+        let store = WorldMapStore(defaults: defaults)
+
+        XCTAssertEqual(store.serverURL, "https://maps.example.org")
+    }
+
     func testIncidentBoundsDetectsRouteIntersection() {
         let bounds = IncidentBounds(west: -85.0, south: 29.0, east: -84.0, north: 30.0)
         XCTAssertTrue(bounds.intersects([

@@ -3,6 +3,8 @@ import Foundation
 
 @MainActor
 final class WorldMapStore: ObservableObject {
+    static let productionServerURL = "https://yourmapisgaslightingyou.us"
+
     enum MapStyle: String, CaseIterable {
         case satellite
         case streets
@@ -102,12 +104,7 @@ final class WorldMapStore: ObservableObject {
         self.defaults = defaults
         self.urlSession = urlSession
         mapStyle = MapStyle(rawValue: defaults.string(forKey: "aftermap.mapStyle") ?? "") ?? .satellite
-        if let savedServer = defaults.string(forKey: "aftermap.serverURL"),
-           URL(string: savedServer)?.host != "aftermap-makeuc.vercel.app" {
-            serverURL = savedServer
-        } else {
-            serverURL = "https://yourmapisgaslightingyou.us"
-        }
+        serverURL = Self.resolvedServerURL(defaults: defaults)
         displayName = defaults.string(forKey: "aftermap.displayName") ?? ""
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-aftermapIncidentPreview") ||
@@ -149,6 +146,23 @@ final class WorldMapStore: ObservableObject {
             focus(on: IncidentCoordinate(bounds.center), zoom: 15)
         }
 #endif
+    }
+
+    static func resolvedServerURL(defaults: UserDefaults) -> String {
+        if let savedServer = defaults.string(forKey: "aftermap.serverURL") {
+            let trimmed = savedServer.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let host = URL(string: trimmed)?.host?.lowercased(),
+               !host.isEmpty,
+               host != "localhost",
+               host != "127.0.0.1",
+               host != "::1",
+               host != "aftermap-makeuc.vercel.app",
+               !host.hasSuffix(".trycloudflare.com") {
+                return trimmed
+            }
+        }
+        defaults.set(productionServerURL, forKey: "aftermap.serverURL")
+        return productionServerURL
     }
 
     var client: IncidentAPIClient { IncidentAPIClient(baseURL: serverURL, urlSession: urlSession) }

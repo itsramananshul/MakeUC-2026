@@ -22,7 +22,7 @@ final class SessionStore: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        serverURL = defaults.string(forKey: "aftermap.serverURL") ?? "http://localhost:3000"
+        serverURL = WorldMapStore.resolvedServerURL(defaults: defaults)
         sessionCode = defaults.string(forKey: "aftermap.sessionCode") ?? "WESTHALL"
         displayName = defaults.string(forKey: "aftermap.displayName") ?? ""
         observerId = defaults.string(forKey: "aftermap.observerId").flatMap { $0.isEmpty ? nil : $0 }
