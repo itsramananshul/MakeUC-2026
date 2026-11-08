@@ -1,0 +1,19 @@
+.venezuela-map { --sidebar-width: clamp(290px, 27vw, 390px); }
+.venezuela-back { display: inline-flex; gap: 8px; align-items: center; min-height: 44px; margin-bottom: 14px; font-weight: 650; }
+.venezuela-date, .venezuela-credit { color: var(--world-muted); }
+.venezuela-date { font-weight: 600; margin-top: 8px; }
+.venezuela-map .world-scroll > p { font-size: .875rem; line-height: 1.5; }
+.venezuela-map .world-action-row button { min-height: 44px; }
+.venezuela-map button[aria-pressed="true"].world-secondary { outline: 1px solid var(--world-blue); outline-offset: -1px; }
+.venezuela-locations { padding: 0; list-style: none; margin: 12px 0; }
+.venezuela-locations button { min-height: 44px; }
+.venezuela-locations li + li { border-top: 1px solid var(--world-line); }
+.venezuela-map-credit { position: absolute; z-index: 1; top: 12px; left: calc(var(--map-obstruction, 0px) + 12px);
+  padding: 8px 11px; border-radius: 9px; background: #111d26eb; color: #f7f9fc; font-size: .75rem; }
+.venezuela-map-credit span { display: block; margin-bottom: 3px; font-weight: 650; }
+.venezuela-map .venezuela-map-credit a { color: #a9d5fd; }
+@media (max-width: 740px) {
+  .venezuela-map.world-main-map { --mobile-sheet-size: 42dvh; }
+  .venezuela-map .world-sidebar a { color: var(--mobile-blue); }
+  .venezuela-back { margin-bottom: 5px; }
+}

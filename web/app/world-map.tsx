@@ -17,6 +17,7 @@ type Props = {
   onReport?: (id: string) => void;
   sidebarVisible?: boolean;
   recoveryImagery?: IncidentImagery[];
+  archivedImagery?: IncidentImagery[];
   draftPassage?: Coordinate[];
   aerialFlagIds?: Set<string>;
   navigationPosition?: Coordinate;
@@ -293,7 +294,7 @@ export default function WorldMap(props: Props) {
     const view: MapInstance = map.current;
     // Keep the map's place and street names above the new imagery.
     const surveyBefore = view.getLayer("waterway_line_label") ? "waterway_line_label" : "incident-boundary-fill";
-    const { active, aerial, incidents, recoveryImagery } = props;
+    const { active, aerial, incidents, recoveryImagery, archivedImagery } = props;
     const layers = surveyLayers.current;
     function renderSurveys() {
       const bounds = view.getBounds();
@@ -306,8 +307,11 @@ export default function WorldMap(props: Props) {
         ...incidents.filter(item => item.id !== active?.id).flatMap(item => activeSurveys(item).filter(showsArea)),
         ...(aerial && active && !active.resolvedAt ? activeSurveys(active) : []),
       ].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-      const rasters = images.flatMap(image => [image,
-        ...(view.getZoom() >= 16 ? (image.detailTiles ?? []).filter(showsArea) : [])]);
+      const showDetail = view.getZoom() >= 16;
+      const archived = satellite ? (archivedImagery ?? []).filter(showsArea) : [];
+      const archiveRasters = [...archived, ...(showDetail ? archived.flatMap(image => (image.detailTiles ?? []).filter(showsArea)) : [])];
+      const rasters = [...archiveRasters, ...images.flatMap(image => [image,
+        ...(showDetail ? (image.detailTiles ?? []).filter(showsArea) : [])])];
       const next = new Map(rasters.map(image => [`after-survey-${image.url.split("/").at(-1)}`, image]));
       if (next.size === layers.size && [...next.keys()].every(id => layers.has(id))) return;
       for (const id of layers) if (!next.has(id)) {
@@ -328,7 +332,7 @@ export default function WorldMap(props: Props) {
     view.on("moveend", renderSurveys);
     view.on("resize", renderSurveys);
     return () => { view.off("moveend", renderSurveys); view.off("resize", renderSurveys); };
-  }, [locationPicker, props.active, props.aerial, props.incidents, props.recoveryImagery, ready]);
+  }, [locationPicker, props.active, props.aerial, props.incidents, props.recoveryImagery, props.archivedImagery, ready, satellite]);
 
   return <div className={`world-canvas ${props.picking ? "is-picking" : ""}`}>
     <div ref={host} className="world-map" aria-label="Interactive world map" />

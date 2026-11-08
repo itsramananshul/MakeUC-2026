@@ -475,6 +475,8 @@ export default function WorldApp() {
               <button className="world-primary" type="button" onClick={() => startTrip(place)}><Route size={15} /> Directions</button>
               {!active && <button className="world-secondary" type="button" onClick={() => { setPicking(null); setModal("create"); }}><Plus size={15} /> Report here</button>}
             </div>
+            {(place.name === "Venezuela" || /(?:^|,\s*)Venezuela$/i.test(place.detail)) &&
+              <a className="world-text" href="/venezuela">June 2026 earthquake imagery</a>}
           </div>}
           <section className="mobile-map-tools" aria-label="Map tools">
             <h2>Map tools</h2>
