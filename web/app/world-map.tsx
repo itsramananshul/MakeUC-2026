@@ -19,6 +19,9 @@ type Props = {
 const style = "https://tiles.openfreemap.org/styles/liberty";
 const satelliteLayer = "satellite-basemap";
 const satelliteTiles = "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg";
+const maptilerKey = process.env.NEXT_PUBLIC_MAPTILER_KEY?.trim();
+const satelliteRoads = ["road_motorway", "road_trunk_primary", "road_secondary_tertiary", "road_street"];
+const satelliteRoadLayer = (id: string) => `satellite-${id}`;
 const collection = (features: Feature<Geometry>[] = []): FeatureCollection => ({ type: "FeatureCollection", features });
 const point = (coordinate: Coordinate, properties: Record<string, string>): Feature => ({
   type: "Feature", geometry: { type: "Point", coordinates: lngLat(coordinate) }, properties,
@@ -28,15 +31,29 @@ const polygon = (bounds: GeographicBounds, properties: Record<string, string>): 
   return { type: "Feature", geometry: { type: "Polygon", coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] }, properties };
 };
 
-function addLayers(map: MapInstance, satellite: boolean) {
-  if (satellite) {
-    map.addSource(satelliteLayer, {
+function addSatellite(map: MapInstance) {
+  map.addSource(satelliteLayer, maptilerKey
+    ? { type: "raster", url: `https://api.maptiler.com/tiles/satellite-v2/tiles.json?key=${encodeURIComponent(maptilerKey)}`, tileSize: 256 }
+    : {
       type: "raster", tiles: [satelliteTiles], tileSize: 256, maxzoom: 14,
       attribution: '<a href="https://cloudless.eox.at/" target="_blank" rel="noopener">EOxCloudless</a> by EOX IT Services GmbH (modified Copernicus Sentinel data 2016)',
     });
-    const firstLabel = "waterway_line_label";
-    map.addLayer({ id: satelliteLayer, type: "raster", source: satelliteLayer }, map.getLayer(firstLabel) ? firstLabel : undefined);
+  const firstLabel = map.getLayer("waterway_line_label") ? "waterway_line_label" : undefined;
+  map.addLayer({ id: satelliteLayer, type: "raster", source: satelliteLayer }, firstLabel);
+  for (const id of satelliteRoads) {
+    const road = map.getStyle().layers.find(layer => layer.id === id);
+    if (road?.type !== "line") continue;
+    map.addLayer({
+      ...road, id: satelliteRoadLayer(id), minzoom: Math.max(10, road.minzoom ?? 0),
+      paint: { "line-color": id === "road_street" ? "#eee9d8" : "#ffdfa5",
+        "line-opacity": id === "road_street" ? .55 : .78,
+        "line-width": ["interpolate", ["linear"], ["zoom"], 10, 1, 17, 2.5] },
+    }, firstLabel);
   }
+}
+
+function addLayers(map: MapInstance, satellite: boolean) {
+  if (satellite) addSatellite(map);
   for (const id of ["incidents", "boundaries", "roads", "route", "markers", "reports"]) {
     map.addSource(id, { type: "geojson", data: collection() });
   }
@@ -132,7 +149,10 @@ export default function WorldMap(props: Props) {
   useEffect(() => {
     const view = map.current;
     if (!ready || !view?.getLayer(satelliteLayer)) return;
-    view.setLayoutProperty(satelliteLayer, "visibility", satellite ? "visible" : "none");
+    const layers = [satelliteLayer, ...satelliteRoads.map(satelliteRoadLayer)];
+    for (const layer of layers) {
+      if (view.getLayer(layer)) view.setLayoutProperty(layer, "visibility", satellite ? "visible" : "none");
+    }
   }, [ready, satellite]);
 
   useEffect(() => {
@@ -199,8 +219,12 @@ export default function WorldMap(props: Props) {
     {!locationPicker && <button type="button" className="world-basemap" aria-pressed={satellite}
       aria-label="Satellite basemap" onClick={() => setSatellite(value => !value)}>
       {satellite ? <Satellite size={16} aria-hidden /> : <Layers2 size={16} aria-hidden />}
-      {satellite ? "Satellite · 2016" : "Streets"}
+      {satellite ? maptilerKey ? "Satellite" : "Satellite · 2016" : "Streets"}
     </button>}
+    {!locationPicker && satellite && maptilerKey && <a className="world-maptiler" href="https://www.maptiler.com/" target="_blank" rel="noreferrer">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="https://api.maptiler.com/resources/logo.svg" alt="MapTiler" width={78} height={20} />
+    </a>}
     {message && <div className="world-map-error" role="status">{message}</div>}
   </div>;
 }

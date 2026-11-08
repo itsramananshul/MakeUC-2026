@@ -26,7 +26,7 @@ Copy `.env.example` to `.env.local` for configuration. Set `AFTERMAP_OPERATOR_KE
 
 ### Imagery and providers
 
-- **Map** opens with the [EOxCloudless 2016](https://cloudless.eox.at/documentation/faq) satellite basemap. Switch to Streets for OpenFreeMap vector tiles and OpenStreetMap attribution. The satellite basemap provides background context, and uploaded incident surveys show more recent conditions for the area they cover.
+- **Map** opens with satellite imagery and OpenFreeMap road labels and outlines. Set `NEXT_PUBLIC_MAPTILER_KEY` at build time for [MapTiler Satellite](https://docs.maptiler.com/schema-raster/satellite/). Otherwise the app uses [EOxCloudless 2016](https://cloudless.eox.at/documentation/faq). Switch to Streets for the full vector basemap. Uploaded incident surveys show more recent conditions for the area they cover.
 - **Place search** uses Photon. Set `PHOTON_URL` to use your own server. The default public service is used for individual searches.
 - **Road import** uses Overpass and falls back to the OpenStreetMap API for bounded requests. Set `OVERPASS_URL` to configure an instance.
 - **Walking outside incidents** uses OSRM. Set `OSRM_FOOT_URL` to your walking router for sustained traffic. The public fallback is throttled to one request per second. Available routes crossing a known incident are excluded.

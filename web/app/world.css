@@ -116,6 +116,8 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
   display: inline-flex; align-items: center; gap: 6px; padding: 0 9px; border: 0; border-radius: 9px;
   background: #fff; color: #17212b; box-shadow: 0 2px 12px #304b5a29; font-size: 12px; font-weight: 650; }
 .world-basemap:hover { background: #eef3f6; }
+.world-maptiler { position: absolute; z-index: 1; top: 185px; right: 19px; display: grid;
+  place-items: center; padding: 4px; border-radius: 6px; background: #fffffff2; }
 .world-picking, .world-legend { position: absolute; display: flex; align-items: center; gap: 8px; z-index: 1;
   background: #ffffffee; border: 1px solid #d6dfe3; border-radius: 10px; padding: 6px 8px; box-shadow: 0 3px 14px #253b4826; }
 .world-picking { top: 17px; left: 50%; transform: translateX(-50%); font-size: 13px; font-weight: 650; }
@@ -127,6 +129,9 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
 .world-legend span:nth-child(2) i { background: #138962; }
 .world-legend span:nth-child(3) i { background: #d13943; }
 .world-legend span:nth-child(4) i { background: #cc7319; }
+@media (max-width: 1100px) {
+  .world-stage:has(.maplibregl-compact-show) .world-legend { bottom: 76px; }
+}
 .incident-overlay { position: fixed; inset: 0; background: #12263355; z-index: 40; }
 .incident-dialog { position: fixed; z-index: 41; inset: 50% auto auto 50%; transform: translate(-50%, -50%); color-scheme: light;
   color: #17212b; background: #f8fafb; width: min(440px, calc(100vw - 24px)); max-height: calc(100dvh - 24px);
@@ -193,6 +198,7 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
   .incident-photo-actions label, .incident-observation summary { min-height: 44px; }
   .incident-dialog .circle-button { width: 44px; height: 44px; }
   .world-legend { bottom: 56px; }
+  .world-stage:has(.maplibregl-compact-show) .world-legend { bottom: 110px; }
   .world-picking { width: max-content; max-width: calc(100% - 100px); }
 }
 .road-finder { margin: 8px 0; }

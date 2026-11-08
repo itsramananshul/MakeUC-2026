@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 const apiOrigin = process.env.AFTERMAP_API_ORIGIN;
 
 const config: NextConfig = {
+  ...(process.env.AFTERMAP_CONTAINER === "1" ? { output: "standalone" as const } : {}),
   agentRules: false,
   turbopack: { root: process.cwd() },
   devIndicators: false,

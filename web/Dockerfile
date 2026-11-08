@@ -1,0 +1,19 @@
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1 AFTERMAP_CONTAINER=1
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM node:22-bookworm-slim
+WORKDIR /app
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000 AFTERMAP_DB_PATH=/data/gaslight.sqlite
+RUN install -d -m 0750 -o node -g node /data
+COPY --from=build --chown=node:node /app/.next/standalone ./
+COPY --from=build --chown=node:node /app/.next/static ./.next/static
+COPY --from=build --chown=node:node /app/public ./public
+COPY --chown=node:node scripts/start-container.mjs ./start-container.mjs
+USER node
+EXPOSE 3000
+CMD ["node", "start-container.mjs"]
