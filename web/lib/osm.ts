@@ -61,8 +61,10 @@ export async function loadRoads(bounds: GeographicBounds): Promise<Road[]> {
 type SearchResult = { at: number; places: Place[] };
 const searchCache = new Map<string, SearchResult>();
 let lastSearch = 0;
-export async function searchPlaces(query: string): Promise<Place[]> {
-  const cacheKey = query.toLocaleLowerCase();
+export async function searchPlaces(query: string, near?: Coordinate): Promise<Place[]> {
+  const cacheKey = near
+    ? `${query.toLocaleLowerCase()}@${near.latitude.toFixed(2)},${near.longitude.toFixed(2)}`
+    : query.toLocaleLowerCase();
   const entry = searchCache.get(cacheKey);
   if (entry && Date.now() - entry.at < 30 * 60_000) return entry.places;
   if (!process.env.PHOTON_URL && Date.now() - lastSearch < 750) throw new RequestError("Wait briefly before searching again.", 429);
@@ -70,6 +72,10 @@ export async function searchPlaces(query: string): Promise<Place[]> {
   const url = new URL("/api/", process.env.PHOTON_URL || "https://photon.komoot.io");
   url.searchParams.set("q", query);
   url.searchParams.set("limit", "8");
+  if (near) {
+    url.searchParams.set("lat", String(near.latitude));
+    url.searchParams.set("lon", String(near.longitude));
+  }
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(9_000), headers: { "User-Agent": userAgent } });
     if (!response.ok) throw new Error("Geocoder failed");
@@ -77,7 +83,7 @@ export async function searchPlaces(query: string): Promise<Place[]> {
       geometry: { coordinates: [number, number] };
       properties: Record<string, string | number | undefined>;
     }[] };
-    const places = (data.features ?? []).flatMap(({ geometry, properties: p }) => {
+    let places = (data.features ?? []).flatMap(({ geometry, properties: p }) => {
       const [longitude, latitude] = geometry.coordinates;
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return [];
       const address = [p.housenumber, p.street].filter(Boolean).join(" ");
@@ -85,6 +91,7 @@ export async function searchPlaces(query: string): Promise<Place[]> {
       const detail = [...new Set([p.city, p.state, p.country])].filter(part => part && part !== name).join(", ");
       return [{ id: `${p.osm_type}-${p.osm_id ?? latitude}`, name, detail, latitude, longitude }];
     });
+    if (near) places = places.sort((a, b) => distanceMeters(near, a) - distanceMeters(near, b));
     if (searchCache.size >= 500) searchCache.delete(searchCache.keys().next().value!);
     searchCache.set(cacheKey, { at: Date.now(), places });
     return places;

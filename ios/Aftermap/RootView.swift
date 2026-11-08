@@ -271,7 +271,7 @@ struct RootView: View {
             case let .rerouting(progress):
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text("Checking every alternative against live incident evidence…")
+                    Text("Finding another route…")
                         .font(.caption)
                 }
                 if let progress {
@@ -285,7 +285,7 @@ struct RootView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.red)
                     HStack {
-                        Button("Retry Safe Route") { store.retryNavigation() }
+                        Button("Retry Route") { store.retryNavigation() }
                             .buttonStyle(.borderedProminent)
                         Button("End") { store.stopNavigation(announce: false) }
                             .buttonStyle(.bordered)
@@ -587,7 +587,7 @@ struct RootView: View {
                 if store.routeState == .calculating {
                     ProgressView().frame(maxWidth: .infinity)
                 } else {
-                    Label(store.origin == nil ? "Use My Location" : "Show Safe Route", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                    Label(store.origin == nil ? "Use My Location" : "Directions", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -598,7 +598,7 @@ struct RootView: View {
 
             if store.routeAlternatives.count > 1 {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Available safe routes")
+                    Text("Route options")
                         .font(.subheadline.weight(.semibold))
                     ForEach(Array(store.routeAlternatives.enumerated()), id: \.offset) { index, route in
                         Button {
@@ -763,7 +763,7 @@ struct RootView: View {
                 .font(.caption.weight(.semibold)).foregroundStyle(AftermapTheme.red)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityIdentifier("route.unavailable")
-        case let .route(response, affected):
+        case let .route(response, _):
             VStack(alignment: .leading, spacing: 3) {
                 Label(
                     routeStatusTitle(response),
@@ -777,23 +777,19 @@ struct RootView: View {
                             ? AftermapTheme.mint
                             : AftermapTheme.amber
                     )
-                if let affected { Text("Checked against \(affected)").font(.caption2).foregroundStyle(.secondary) }
                 if response.hasUnverifiedSegments {
-                    Text("Dashed street segments do not have current confirmation. Live navigation is disabled until every segment is verified.")
+                    Text("Some streets on this route need current confirmation. Choose another route to begin navigation.")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(AftermapTheme.amber)
                 }
-                if !response.reason.isEmpty { Text(response.reason).font(.caption2).foregroundStyle(.secondary) }
+                if response.status == .partial {
+                    Text("A complete route is not available. Try another travel mode or destination.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityIdentifier("route.status")
-        }
-    }
-
-    private var routeButtonTitle: String {
-        switch store.routeState {
-        case .calculating: "Checking evidence…"
-        default: "Preview evidence-aware route"
         }
     }
 
@@ -804,12 +800,12 @@ struct RootView: View {
         let summary = [formatted, duration].compactMap { $0 }.joined(separator: " • ")
         if response.hasUnverifiedSegments {
             let count = response.unverifiedSegments?.count ?? 0
-            return "Route has \(count) unverified segment\(count == 1 ? "" : "s") • \(summary)"
+            return "Route needs verification • \(summary)"
         }
         return switch response.status {
-        case .complete: "Evidence-aware route • \(summary)"
-        case .partial: "Partial route only • \(summary)"
-        case .unavailable: "No verified route"
+        case .complete: "\(store.travelMode.shortLabel) • \(summary)"
+        case .partial: "Route unavailable • \(summary)"
+        case .unavailable: "No route available"
         }
     }
 

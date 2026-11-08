@@ -250,7 +250,10 @@ final class WorldMapStore: ObservableObject {
 
     func refreshIncidents() async {
         do {
-            let latest = try await client.incidents()
+            // Training fixtures belong in rehearsals, not in the public navigation
+            // experience. Never let a seeded exercise tint the live map or influence
+            // a real trip.
+            let latest = try await client.incidents().filter(Self.isLiveIncident)
             incidents = latest
             lastUpdated = Date()
             connection = .live
@@ -356,7 +359,7 @@ final class WorldMapStore: ObservableObject {
 
     private func fetchPlaces(term: String, revision: Int) async throws -> [PlaceResult] {
         do {
-            return try await client.places(query: term)
+            return sortPlacesByDistance(try await client.places(query: term, near: searchReferenceCoordinate))
         } catch {
             guard isSearchThrottle(error) else { throw error }
             try await Task.sleep(for: .milliseconds(900))
@@ -364,8 +367,23 @@ final class WorldMapStore: ObservableObject {
                   query.trimmingCharacters(in: .whitespacesAndNewlines) == term else {
                 throw CancellationError()
             }
-            return try await client.places(query: term)
+            return sortPlacesByDistance(try await client.places(query: term, near: searchReferenceCoordinate))
         }
+    }
+
+    private var searchReferenceCoordinate: IncidentCoordinate? {
+        userCoordinate ?? origin ?? cameraTarget?.coordinate
+    }
+
+    private func sortPlacesByDistance(_ values: [PlaceResult]) -> [PlaceResult] {
+        guard let reference = searchReferenceCoordinate else { return values }
+        let origin = CLLocation(latitude: reference.latitude, longitude: reference.longitude)
+        return values.enumerated().sorted { lhs, rhs in
+            let left = origin.distance(from: CLLocation(latitude: lhs.element.latitude, longitude: lhs.element.longitude))
+            let right = origin.distance(from: CLLocation(latitude: rhs.element.latitude, longitude: rhs.element.longitude))
+            if abs(left - right) < 1 { return lhs.offset < rhs.offset }
+            return left < right
+        }.map(\.element)
     }
 
     private func isSearchThrottle(_ error: Error) -> Bool {
@@ -439,12 +457,19 @@ final class WorldMapStore: ObservableObject {
         }
 #endif
         do {
-            return try await client.places(query: term)
+            return sortPlacesByDistance(try await client.places(query: term, near: searchReferenceCoordinate))
         } catch {
             guard isSearchThrottle(error) else { throw error }
             try await Task.sleep(for: .milliseconds(900))
-            return try await client.places(query: term)
+            return sortPlacesByDistance(try await client.places(query: term, near: searchReferenceCoordinate))
         }
+    }
+
+    private static func isLiveIncident(_ incident: Incident) -> Bool {
+        let descriptor = [incident.name, incident.imagery?.source ?? ""]
+            .joined(separator: " ")
+            .lowercased()
+        return !["demo", "exercise", "simulation", "simulated"].contains(where: descriptor.contains)
     }
 
     func chooseCoordinate(_ coordinate: CLLocationCoordinate2D) {
@@ -701,7 +726,7 @@ final class WorldMapStore: ObservableObject {
                 notice = "This route includes unverified street segments. Confirm current passage evidence or choose a fully verified route before starting live navigation."
                 return false
             }
-            notice = "Show a complete safe route before starting navigation."
+            notice = "Choose a complete route before starting navigation."
             return false
         }
 
@@ -866,7 +891,7 @@ final class WorldMapStore: ObservableObject {
             if case let .unavailable(message) = routeState {
                 reason = message
             } else {
-                reason = "No evidence-aware route is currently available."
+                reason = "No route is currently available."
             }
             navigationState = .blocked(reason)
             navigationLocationDriver.stop()

@@ -22,11 +22,15 @@ struct IncidentAPIClient {
         )
     }
 
-    func places(query: String) async throws -> [PlaceResult] {
+    func places(query: String, near coordinate: IncidentCoordinate? = nil) async throws -> [PlaceResult] {
         guard var components = URLComponents(url: try endpoint("api/places"), resolvingAgainstBaseURL: false) else {
             throw AftermapAPIError.invalidServerURL
         }
         components.queryItems = [URLQueryItem(name: "q", value: query)]
+        if let coordinate {
+            components.queryItems?.append(URLQueryItem(name: "lat", value: String(coordinate.latitude)))
+            components.queryItems?.append(URLQueryItem(name: "lon", value: String(coordinate.longitude)))
+        }
         guard let url = components.url else { throw AftermapAPIError.invalidServerURL }
         let response: PlaceListResponse = try await send(url: url, method: "GET", body: Optional<String>.none, bearer: nil)
         return response.places

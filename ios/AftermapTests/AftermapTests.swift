@@ -474,6 +474,53 @@ final class AftermapTests: XCTestCase {
     }
 
     @MainActor
+    func testEndpointSearchUsesLiveLocationAndRanksNearestResultFirst() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        MockURLProtocol.handler = { request in
+            let items = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            let query = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
+            XCTAssertEqual(query["q"], "BMV")
+            XCTAssertEqual(Double(query["lat"] ?? ""), 39.1031)
+            XCTAssertEqual(Double(query["lon"] ?? ""), -84.5120)
+            let data = #"{"places":[{"id":"wayne","name":"BMV","detail":"Wayne, Indiana","latitude":40.04,"longitude":-84.99},{"id":"cincinnati","name":"BMV","detail":"Cincinnati, Ohio","latitude":39.12,"longitude":-84.51},{"id":"france","name":"BMV","detail":"Paris, France","latitude":48.85,"longitude":2.35}]}"#.data(using: .utf8)!
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
+        }
+        let suite = "AFTERMAP.NearbySearch.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("https://aftermap.example", forKey: "aftermap.serverURL")
+        let store = WorldMapStore(defaults: defaults, urlSession: session)
+        store.acceptUserLocation(CLLocationCoordinate2D(latitude: 39.1031, longitude: -84.5120))
+
+        let results = try await store.endpointPlaces(query: "BMV")
+
+        XCTAssertEqual(results.map(\.id), ["cincinnati", "wayne", "france"])
+    }
+
+    @MainActor
+    func testTrainingIncidentsAreExcludedFromLiveMap() async {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/incidents")
+            let data = #"{"incidents":[{"id":"training","name":"Cincinnati Flood Exercise","kind":"incident","bounds":{"west":-84.6,"south":39.0,"east":-84.4,"north":39.2},"imagery":{"url":"/training.png","bounds":{"west":-84.6,"south":39.0,"east":-84.4,"north":39.2},"source":"simulated imagery","timestamp":"2026-11-07"},"version":1,"roadCount":10},{"id":"live","name":"River Flood","kind":"incident","bounds":{"west":-85.0,"south":39.0,"east":-84.9,"north":39.1},"imagery":null,"version":1,"roadCount":4}]}"#.data(using: .utf8)!
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
+        }
+        let suite = "AFTERMAP.LiveIncidentFilter.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("https://aftermap.example", forKey: "aftermap.serverURL")
+        let store = WorldMapStore(defaults: defaults, urlSession: session)
+
+        await store.refreshIncidents()
+
+        XCTAssertEqual(store.incidents.map(\.id), ["live"])
+    }
+
+    @MainActor
     func testCanceledPlaceSearchDoesNotShowAnAlert() async {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
@@ -666,7 +713,7 @@ final class AftermapTests: XCTestCase {
 
         XCTAssertFalse(store.startNavigation(enableLiveTracking: false))
         XCTAssertEqual(store.navigationState, .idle)
-        XCTAssertEqual(store.notice, "Show a complete safe route before starting navigation.")
+        XCTAssertEqual(store.notice, "Choose a complete route before starting navigation.")
     }
 
     @MainActor
