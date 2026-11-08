@@ -14,7 +14,7 @@ export type IncidentSummary = {
 };
 export type Incident = IncidentSummary & { roads: Road[]; reports: FieldReport[] };
 export type Place = { id: string; name: string; detail: string; latitude: number; longitude: number };
-export type TravelMode = "driving" | "walking" | "cycling" | "transit";
+export type TravelMode = "driving" | "walking" | "cycling";
 export type RouteOption = {
   coordinates: Coordinate[]; distanceMeters: number; durationSeconds: number;
   steps: { instruction: string; distanceMeters: number }[];

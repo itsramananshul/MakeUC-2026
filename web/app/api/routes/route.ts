@@ -10,11 +10,7 @@ export async function POST(request: Request) {
     const { origin, destination, mode } = await readInput(request, routeInput);
     const incidents = incidentList();
     const active = incidents.find(incident => within(origin, incident.bounds) && within(destination, incident.bounds));
-    if (active) {
-      if (mode !== "walking") return json({ status: "unavailable", coordinates: [], distanceMeters: 0,
-        reason: "Only verified walking passages are available inside this incident. Switch to Walk." });
-      return json(incidentRoute(getIncident(active.id), origin, destination, incidents));
-    }
+    if (active && mode === "walking") return json(incidentRoute(getIncident(active.id), origin, destination, incidents));
     if (incidents.some(incident => within(origin, incident.bounds) || within(destination, incident.bounds))) {
       return json({ status: "unavailable", coordinates: [], distanceMeters: 0,
         reason: active ? "Switch to walking to route along reported passages in this incident." :

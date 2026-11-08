@@ -59,24 +59,12 @@ export async function loadRoads(bounds: GeographicBounds): Promise<Road[]> {
 type SearchResult = { at: number; places: Place[] };
 const searchCache = new Map<string, SearchResult>();
 let lastSearch = 0;
-let searchQueue: Promise<void> = Promise.resolve();
-
-async function waitForPublicGeocoder(): Promise<void> {
-  if (process.env.PHOTON_URL) return;
-  const turn = searchQueue.then(async () => {
-    const delay = Math.max(0, 750 - (Date.now() - lastSearch));
-    if (delay) await new Promise(resolve => setTimeout(resolve, delay));
-    lastSearch = Date.now();
-  });
-  searchQueue = turn.catch(() => undefined);
-  await turn;
-}
-
 export async function searchPlaces(query: string): Promise<Place[]> {
   const cacheKey = query.toLocaleLowerCase();
   const entry = searchCache.get(cacheKey);
   if (entry && Date.now() - entry.at < 30 * 60_000) return entry.places;
-  await waitForPublicGeocoder();
+  if (!process.env.PHOTON_URL && Date.now() - lastSearch < 750) throw new RequestError("Wait briefly before searching again.", 429);
+  lastSearch = Date.now();
   const url = new URL("/api/", process.env.PHOTON_URL || "https://photon.komoot.io");
   url.searchParams.set("q", query);
   url.searchParams.set("limit", "8");
@@ -102,33 +90,11 @@ export async function searchPlaces(query: string): Promise<Place[]> {
 }
 
 let lastRoute = 0;
-let routeQueue: Promise<void> = Promise.resolve();
-
-async function waitForPublicRouter() {
-  const turn = routeQueue.then(async () => {
-    const delay = Math.max(0, 1000 - (Date.now() - lastRoute));
-    if (delay) await new Promise(resolve => setTimeout(resolve, delay));
-    lastRoute = Date.now();
-  });
-  routeQueue = turn.catch(() => undefined);
-  await turn;
-}
-
-function router(mode: Exclude<TravelMode, "transit">) {
-  if (mode === "driving") return {
-    base: process.env.OSRM_CAR_URL || "https://router.project-osrm.org",
-    configured: !!process.env.OSRM_CAR_URL,
-  };
-  if (mode === "cycling") return {
-    base: process.env.OSRM_BIKE_URL || "https://routing.openstreetmap.de/routed-bike",
-    configured: !!process.env.OSRM_BIKE_URL,
-  };
-  return {
-    base: process.env.OSRM_FOOT_URL || "https://routing.openstreetmap.de/routed-foot",
-    configured: !!process.env.OSRM_FOOT_URL,
-  };
-}
-
+const routingProfiles = {
+  driving: { path: "car", origin: () => process.env.OSRM_CAR_URL },
+  walking: { path: "foot", origin: () => process.env.OSRM_FOOT_URL },
+  cycling: { path: "bike", origin: () => process.env.OSRM_BIKE_URL },
+};
 type RoutingStep = {
   distance: number; name: string; ref?: string; destinations?: string;
   maneuver: { type: string; modifier?: string; exit?: number };
@@ -150,15 +116,21 @@ function describeStep({ maneuver, name, ref, destinations }: RoutingStep) {
 }
 
 export async function standardRoute(origin: Coordinate, destination: Coordinate, incidents: IncidentSummary[],
-  mode: TravelMode = "walking"): Promise<IncidentRoute> {
+  mode: TravelMode): Promise<IncidentRoute> {
   const unset: IncidentRoute = { status: "unavailable", coordinates: [], distanceMeters: 0,
     reason: `No ${mode} route connects these points. Check the two locations or try another travel mode.` };
   if (distanceMeters(origin, destination) < 1) return { ...unset, reason: "Choose a different destination." };
-  if (mode === "transit") return { ...unset, reason: "Transit routing is not available from the configured routing service." };
-  const selectedRouter = router(mode);
-  if (!selectedRouter.configured) await waitForPublicRouter();
+  const profile = routingProfiles[mode];
+  const customOrigin = profile.origin();
+  if (!customOrigin) {
+    const now = Date.now();
+    const delay = Math.max(0, lastRoute + 1000 - now);
+    if (delay > 3000) throw new RequestError("The route service is busy. Try again shortly.", 429);
+    lastRoute = now + delay;
+    if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+  }
   const pair = `${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}`;
-  const base = selectedRouter.base.replace(/\/$/, "");
+  const base = (customOrigin || `https://routing.openstreetmap.de/routed-${profile.path}`).replace(/\/$/, "");
   const url = `${base}/route/v1/driving/${pair}?overview=full&geometries=geojson&alternatives=2&steps=true&radiuses=2000;2000`;
   try {
     const response = await fetch(url, {
