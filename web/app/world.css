@@ -112,12 +112,16 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
 .world-app .maplibregl-ctrl-group { border-radius: 11px; box-shadow: 0 2px 12px #304b5a29; }
 .world-app .maplibregl-ctrl-group button { width: 35px; height: 36px; }
 .world-app .maplibregl-ctrl-attrib { background: #ffffffd8; }
+.world-basemap { position: absolute; z-index: 1; top: 131px; right: 19px; min-height: 35px;
+  display: inline-flex; align-items: center; gap: 6px; padding: 0 9px; border: 0; border-radius: 9px;
+  background: #fff; color: #17212b; box-shadow: 0 2px 12px #304b5a29; font-size: 12px; font-weight: 650; }
+.world-basemap:hover { background: #eef3f6; }
 .world-picking, .world-legend { position: absolute; display: flex; align-items: center; gap: 8px; z-index: 1;
   background: #ffffffee; border: 1px solid #d6dfe3; border-radius: 10px; padding: 6px 8px; box-shadow: 0 3px 14px #253b4826; }
 .world-picking { top: 17px; left: 50%; transform: translateX(-50%); font-size: 13px; font-weight: 650; }
 .world-picking .circle-button { width: 25px; height: 25px; }
 .world-restore { position: absolute; top: 17px; left: 15px; z-index: 1; background: #fff; box-shadow: 0 3px 14px #253b4826; }
-.world-legend { bottom: 17px; left: 12px; font-size: 11px; max-width: calc(100% - 24px); flex-wrap: wrap; }
+.world-legend { bottom: 41px; left: 12px; font-size: 11px; max-width: calc(100% - 24px); flex-wrap: wrap; }
 .world-legend span { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 .world-legend i { width: 13px; height: 3px; border-radius: 3px; background: #7c868b; }
 .world-legend span:nth-child(2) i { background: #138962; }
@@ -184,10 +188,11 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
   .world-app:not(.with-world-sidebar) .world-stage { min-height: 100dvh; }
   .world-search input { font-size: 16px; }
   .world-action-row button, .incident-form .world-primary, .world-nav { min-height: 44px; }
+  .world-basemap { min-height: 44px; }
   .incident-location-actions button, .incident-location-search button, .incident-location-results button,
   .incident-photo-actions label, .incident-observation summary { min-height: 44px; }
   .incident-dialog .circle-button { width: 44px; height: 44px; }
-  .world-legend { bottom: 27px; }
+  .world-legend { bottom: 56px; }
   .world-picking { width: max-content; max-width: calc(100% - 100px); }
 }
 .road-finder { margin: 8px 0; }

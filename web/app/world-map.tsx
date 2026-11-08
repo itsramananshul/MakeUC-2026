@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Layers2, Satellite } from "lucide-react";
 import { Map as MapLibreMap, NavigationControl, ScaleControl, setWorkerUrl, type GeoJSONSource, type Map as MapInstance } from "maplibre-gl";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import { boundsTuple, lngLat, type Coordinate, type GeographicBounds, type Incident, type IncidentRoute, type IncidentSummary } from "@/lib/incident-types";
@@ -16,6 +17,8 @@ type Props = {
   incidentPreview?: { center: Coordinate; bounds: GeographicBounds } | null;
 };
 const style = "https://tiles.openfreemap.org/styles/liberty";
+const satelliteLayer = "satellite-basemap";
+const satelliteTiles = "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg";
 const collection = (features: Feature<Geometry>[] = []): FeatureCollection => ({ type: "FeatureCollection", features });
 const point = (coordinate: Coordinate, properties: Record<string, string>): Feature => ({
   type: "Feature", geometry: { type: "Point", coordinates: lngLat(coordinate) }, properties,
@@ -25,7 +28,15 @@ const polygon = (bounds: GeographicBounds, properties: Record<string, string>): 
   return { type: "Feature", geometry: { type: "Polygon", coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] }, properties };
 };
 
-function addLayers(map: MapInstance) {
+function addLayers(map: MapInstance, satellite: boolean) {
+  if (satellite) {
+    map.addSource(satelliteLayer, {
+      type: "raster", tiles: [satelliteTiles], tileSize: 256, maxzoom: 14,
+      attribution: '<a href="https://cloudless.eox.at/" target="_blank" rel="noopener">EOxCloudless</a> by EOX IT Services GmbH (modified Copernicus Sentinel data 2016)',
+    });
+    const firstLabel = "waterway_line_label";
+    map.addLayer({ id: satelliteLayer, type: "raster", source: satelliteLayer }, map.getLayer(firstLabel) ? firstLabel : undefined);
+  }
   for (const id of ["incidents", "boundaries", "roads", "route", "markers", "reports"]) {
     map.addSource(id, { type: "geojson", data: collection() });
   }
@@ -65,6 +76,8 @@ export default function WorldMap(props: Props) {
   const inputs = useRef(props);
   const [ready, setReady] = useState(false);
   const [message, setMessage] = useState("");
+  const [satellite, setSatellite] = useState(true);
+  const locationPicker = props.incidentPreview !== undefined;
   useEffect(() => { inputs.current = props; }, [props]);
   useEffect(() => {
     if (!host.current) return;
@@ -84,7 +97,11 @@ export default function WorldMap(props: Props) {
     observer.observe(host.current);
     view.addControl(new NavigationControl({ visualizePitch: false }), "top-right");
     view.addControl(new ScaleControl({ unit: "metric" }), "bottom-right");
-    view.on("load", () => { addLayers(view); setReady(true); setMessage(""); });
+    view.on("load", () => {
+      addLayers(view, inputs.current.incidentPreview === undefined);
+      setReady(true);
+      setMessage("");
+    });
     view.on("error", () => {
       if (!view.getSource("incidents")) setMessage("The world map couldn’t load. Check the connection and refresh.");
     });
@@ -111,6 +128,12 @@ export default function WorldMap(props: Props) {
     }
     return () => { observer.disconnect(); map.current = null; view.remove(); };
   }, []);
+
+  useEffect(() => {
+    const view = map.current;
+    if (!ready || !view?.getLayer(satelliteLayer)) return;
+    view.setLayoutProperty(satelliteLayer, "visibility", satellite ? "visible" : "none");
+  }, [ready, satellite]);
 
   useEffect(() => {
     if (!ready || !map.current || !props.focus) return;
@@ -173,6 +196,11 @@ export default function WorldMap(props: Props) {
 
   return <div className={`world-canvas ${props.picking ? "is-picking" : ""}`}>
     <div ref={host} className="world-map" aria-label="Interactive world map" />
+    {!locationPicker && <button type="button" className="world-basemap" aria-pressed={satellite}
+      aria-label="Satellite basemap" onClick={() => setSatellite(value => !value)}>
+      {satellite ? <Satellite size={16} aria-hidden /> : <Layers2 size={16} aria-hidden />}
+      {satellite ? "Satellite · 2016" : "Streets"}
+    </button>}
     {message && <div className="world-map-error" role="status">{message}</div>}
   </div>;
 }
