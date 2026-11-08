@@ -1,5 +1,6 @@
 "use client";
 
+import { maxGeoTiffs } from "@/lib/imagery-limits";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Camera, Clipboard, Crosshair, Images, LoaderCircle, MapPin, Search, X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
@@ -402,7 +403,7 @@ export function SurveyUpload({ incident, access, onUpload }: {
     </div>
     <label className="world-upload" key={mode}><Images size={24} />
       <strong>{files.length ? `${files.length} selected` : "Choose survey files…"}</strong>
-      <small>{mode === "tiff" ? "1 to 8 georeferenced TIFFs" : "5 to 40 overlapping geotagged photos"} · 72 MB total</small>
+      <small>{mode === "tiff" ? `1 to ${maxGeoTiffs} georeferenced TIFFs` : "5 to 40 overlapping geotagged photos"} · 72 MB total</small>
       <input type="file" multiple disabled={busy || processing} accept={mode === "tiff" ? ".tif,.tiff" : ".jpg,.jpeg,.png"}
         onChange={event => setFiles(Array.from(event.target.files ?? []))} />
     </label>

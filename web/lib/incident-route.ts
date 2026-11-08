@@ -43,7 +43,7 @@ export function mappedIncidentRoute(incident: Incident, origin: Coordinate, dest
 
 function findRoute(incident: Incident, origin: Coordinate, destination: Coordinate,
   incidents: IncidentSummary[], preview: boolean): IncidentRoute {
-  if (!withinIncident(origin, incident)) return noRoute("Choose a starting point inside the incident.");
+  if (!preview && !withinIncident(origin, incident)) return noRoute("Choose a starting point inside the incident.");
   if (distanceMeters(origin, destination) < 1) return noRoute("Choose a different destination.");
   const graph: Graph = new UndirectedGraph();
   const segmentKey = (road: Road) => [coordinateKey(road.from), coordinateKey(road.to)].sort().join("|");
@@ -53,6 +53,21 @@ function findRoute(incident: Incident, origin: Coordinate, destination: Coordina
     !excluded?.has(segmentKey(road)));
   if (preview) usable.sort((a, b) => Number(b.state === "open") - Number(a.state === "open"));
   for (const road of usable) link(graph, add(graph, road.from, road.label), add(graph, road.to, road.label), road.state !== "open");
+  const splits = new Map<Road, { id: string; offset: number }[]>();
+  function connect(snap: NonNullable<ReturnType<typeof project>>) {
+    const { road, point } = snap;
+    const id = add(graph, point, road.label);
+    let points = splits.get(road);
+    if (!points) {
+      points = [
+        { id: coordinateKey(road.from), offset: 0 },
+        { id: coordinateKey(road.to), offset: distanceMeters(road.from, road.to) },
+      ];
+      splits.set(road, points);
+    }
+    points.push({ id, offset: distanceMeters(road.from, point) });
+    return id;
+  }
   if (preview) {
     const streets = usable.filter(road => road.id.startsWith("osm-"));
     for (const passage of incident.roads.filter(road => road.state === "open" && road.id.startsWith("field-"))) {
@@ -60,9 +75,7 @@ function findRoute(incident: Incident, origin: Coordinate, destination: Coordina
         if (!graph.hasNode(coordinateKey(end))) continue;
         const snap = project(end, streets);
         if (!snap || snap.gap > 12) continue;
-        const junction = add(graph, snap.point, snap.road.label);
-        link(graph, junction, coordinateKey(snap.road.from), snap.road.state !== "open");
-        link(graph, junction, coordinateKey(snap.road.to), snap.road.state !== "open");
+        const junction = connect(snap);
         link(graph, coordinateKey(end), junction, true);
       }
     }
@@ -71,25 +84,27 @@ function findRoute(incident: Incident, origin: Coordinate, destination: Coordina
   const openRoads = segments.filter(road => road.state === "open");
   function snapEndpoint(point: Coordinate, limit: number) {
     const nearest = project(point, snappingRoads);
-    if (preview || nearest?.road.state === "open") return nearest;
+    if (nearest?.road.state === "open") return nearest;
     const open = project(point, openRoads);
     if (!open || open.gap > limit || crossesReportedClosure(point, open.point, segments)) return nearest;
     return open;
   }
   const start = snapEndpoint(origin, 20), finish = snapEndpoint(destination, 15);
-  if (!start || (!preview && start.road.state !== "open") || start.gap > 20) {
+  const snapLimit = preview ? 35 : 20;
+  if (!start || (!preview && start.road.state !== "open") || start.gap > snapLimit ||
+      crossesReportedClosure(origin, start.point, segments)) {
     return noRoute("The starting point is not close enough to a reported open passage.");
   }
-  function connect(snap: NonNullable<ReturnType<typeof project>>) {
-    const id = add(graph, snap.point, snap.road.label);
-    link(graph, id, coordinateKey(snap.road.from), snap.road.state !== "open");
-    link(graph, id, coordinateKey(snap.road.to), snap.road.state !== "open");
-    return id;
-  }
   const startId = connect(start);
-  const finishId = finish && finish.gap <= (preview ? 20 : 15) && (preview || finish.road.state === "open") && withinIncident(destination, incident)
+  const finishId = finish && finish.gap <= (preview ? snapLimit : 15) && (preview || finish.road.state === "open") &&
+    (preview || withinIncident(destination, incident)) && !crossesReportedClosure(destination, finish.point, segments)
     ? connect(finish) : null;
-  if (finishId && finish?.road.id === start.road.id) link(graph, startId, finishId, start.road.state !== "open");
+  for (const [road, points] of splits) {
+    points.sort((a, b) => a.offset - b.offset);
+    for (let index = 1; index < points.length; index++) {
+      link(graph, points[index - 1].id, points[index].id, road.state !== "open");
+    }
+  }
   let path = finishId ? bidirectional(graph, startId, finishId, "weight") : null;
   const complete = !!path && path.length > 1;
   if (!complete) {

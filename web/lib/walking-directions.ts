@@ -6,9 +6,10 @@ import { loadRoads, standardRoute } from "./osm";
 
 export async function walkingDirections(origin: Coordinate, destination: Coordinate, incidents: IncidentSummary[]) {
   const common = incidents.find(incident => withinIncident(origin, incident) && withinIncident(destination, incident));
-  const local = common ? getIncident(common.id) : null;
+  const touching = common ?? incidents.find(incident => withinIncident(origin, incident) || withinIncident(destination, incident));
+  const local = touching ? getIncident(touching.id) : null;
   const assess = assessIncidentRoutes(incidents, local ? new Map([[local.id, local]]) : undefined);
-  const reported = local ? incidentRoute(avoidClosures(local), origin, destination, incidents) : null;
+  const reported = common && local ? incidentRoute(avoidClosures(local), origin, destination, incidents) : null;
 
   const passesAssessment = (route: ReturnType<typeof incidentRoute>) => route.coordinates.length > 1 &&
     assess({ ...route, steps: [], durationSeconds: 0 });

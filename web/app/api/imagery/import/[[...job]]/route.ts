@@ -1,3 +1,5 @@
+import { cincinnatiSurveySource, isCincinnatiSurvey } from "@/lib/cincinnati-survey";
+import { maxGeoTiffs } from "@/lib/imagery-limits";
 import exif from "exif-reader";
 import sharp from "sharp";
 import { droneStatus, startDroneJob } from "@/lib/drone";
@@ -63,9 +65,10 @@ export async function POST(request: Request, context: Context) {
       throw new RequestError("Choose up to 72 MB of imagery.", 413);
     }
     if (files.every(file => /\.tiff?$/i.test(file.name))) {
-      if (files.length > 8) throw new RequestError("Choose up to eight GeoTIFFs.");
-      const result = await mosaic(await Promise.all(files.map(file => file.arrayBuffer())), false);
-      return json({ status: "complete", ...publish(result.bytes, result, "Uploaded georeferenced aerial survey") }, 201);
+      if (files.length > maxGeoTiffs) throw new RequestError(`Choose up to ${maxGeoTiffs} GeoTIFFs.`);
+      const rasters = await Promise.all(files.map(file => file.arrayBuffer()));
+      const result = await mosaic(rasters, false);
+      return json({ status: "complete", ...publish(result.bytes, result, isCincinnatiSurvey(rasters) ? cincinnatiSurveySource : "Uploaded georeferenced aerial survey") }, 201);
     }
     if (files.length < 5 || !files.every(file => /\.(jpe?g|png)$/i.test(file.name))) {
       throw new RequestError("Choose GeoTIFFs or at least five overlapping JPEG or PNG drone photos.", 422);

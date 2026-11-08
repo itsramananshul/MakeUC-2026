@@ -20,7 +20,7 @@ type Focus = { point: Coordinate; zoom?: number } | { bounds: GeographicBounds }
 type Picking = "start" | "destination" | "point" | "connection" | "trace" | null;
 type ModalKind = "create" | "access" | "report" | "survey" | "remove-aerial" | "resolve" | null;
 type Stop = "start" | "destination";
-type TripPoint = Coordinate & { label: string; detail?: string };
+type TripPoint = Coordinate & { label: string; detail?: string; useDeviceLocation?: boolean };
 const labels = { unknown: "Unverified", open: "Reported open", blocked: "Blocked", hazard: "Hazard", conflict: "Disputed" };
 const observationLabels = { rubble: "Possible rubble", water: "Possible flooding", both: "Possible rubble and flooding",
   unclear: "Unclear from above", none_visible: "No visible obstruction" };
@@ -61,8 +61,8 @@ export default function WorldApp() {
   const [incidentPanel, setIncidentPanel] = useState(false);
   const [showSteps, setShowSteps] = useState(false);
   const [start, setStart] = useState<TripPoint | null>(null);
-  const [deviceOrigin, setDeviceOrigin] = useState<TripPoint | null>(null);
   const [locatingStart, setLocatingStart] = useState(false);
+  const locationRequest = useRef(0);
   const [destination, setDestination] = useState<TripPoint | null>(null);
   const [route, setRoute] = useState<IncidentRoute | null>(null);
   const [mode, setMode] = useState<TravelMode>("driving");
@@ -119,8 +119,12 @@ export default function WorldApp() {
   const navigationRevision = incidents.find(incident => incident.id === navigationIncident)?.version ?? active?.version ?? 0;
   const navigation = useLiveNavigation(`${incidentAreas}:${navigationRevision}`);
   const { trip: liveTrip, snapshot: guidance } = navigation;
-  const canNavigate = !routing && !!destination && visibleRoute?.status === "complete" &&
+  const canNavigate = !routing && !!start && !!destination && visibleRoute?.status === "complete" &&
     !visibleRoute.unverifiedSegments?.length && visibleRoute.coordinates.length >= 2;
+  const reviewSteps = routeOption?.steps ?? (visibleRoute ? [{
+    instruction: visibleRoute.incidentId ? "Follow the reported passage" : "Follow the mapped route",
+    distanceMeters: visibleRoute.distanceMeters,
+  }] : []);
   const reports = active?.reports ?? [];
   const shownReports = reports.slice(0, 40);
   const pinnedReport = reports.find(report => report.id === focusedReport);
@@ -212,6 +216,7 @@ export default function WorldApp() {
   function chooseIncident(id: string) {
     if (id === selected) { if (active) setFocus({ bounds: incidentExtent(active) }); return; }
     setActive(null); setSelected(id); setRoadId(null); setFocusedReport(""); setRoadQuery(""); setPoints([]); setTracing(false); setStale(false); setError("");
+    locationRequest.current++; setLocatingStart(false);
     resetRoute(); setTripOpen(false); setIncidentPanel(!!id); setPicking(null); setStart(null); setDestination(null);
     setPlace(null); setSidebar(true); setSheet(1); setMobileSearch(false);
     const url = new URL(location.href);
@@ -244,14 +249,22 @@ export default function WorldApp() {
     setRoute(null); setRouteIndex(0); setRouteError(""); setRouting(false); setShowSteps(false);
   }
   function startNavigation() {
-    if (!canNavigate || !destination || !visibleRoute) return;
+    if (!canNavigate || !start || !destination || !visibleRoute) return;
+    if (!start.useDeviceLocation) {
+      setShowSteps(true); setSheet(2);
+      return;
+    }
     setFollowNavigation(true); setSheet(1); setShowSteps(false);
     navigation.start({ destination, mode, route: visibleRoute });
   }
   function setTripPoint(side: Stop, point: TripPoint | null) {
     resetRoute();
     setPicking(null);
-    if (side === "start") setStart(point); else setDestination(point);
+    if (side === "start") {
+      locationRequest.current++;
+      setLocatingStart(false);
+      setStart(point);
+    } else setDestination(point);
   }
   function pickTripPoint(side: Stop) {
     keepTripViewport.current = true;
@@ -283,12 +296,14 @@ export default function WorldApp() {
   }
   function myLocation() {
     if (!navigator.geolocation) { setRouteError("Location is unavailable in this browser."); return; }
+    const request = ++locationRequest.current;
     setLocatingStart(true); setRouteError("");
     navigator.geolocation.getCurrentPosition(position => {
-      const point = { latitude: position.coords.latitude, longitude: position.coords.longitude, label: "My location" };
-      setLocatingStart(false); setDeviceOrigin(point);
+      if (locationRequest.current !== request) return;
+      const point = { latitude: position.coords.latitude, longitude: position.coords.longitude, label: "My location", useDeviceLocation: true };
       setTripPoint("start", point); setFocus({ point, zoom: 15 });
     }, () => {
+      if (locationRequest.current !== request) return;
       setLocatingStart(false);
       setRouteError("Could not get your location. Search for a starting point or pick it on the map.");
     }, { timeout: 8000, enableHighAccuracy: true });
@@ -349,7 +364,6 @@ export default function WorldApp() {
     }
     setTripOpen(true); setIncidentPanel(false); setShowSteps(false); setSheet(1); setMobileSearch(false);
     if (!tripOpen || point) resetRoute();
-    if (!start && deviceOrigin) setStart(deviceOrigin);
     if (point) setDestination({ ...point, label: point.name });
   }
   function selectRoad(id: string) {
@@ -514,18 +528,18 @@ export default function WorldApp() {
             </button>}
             {guidance?.phase === "paused" && <button className="world-secondary" type="button" onClick={navigation.retry}>Try again</button>}
           </div>
-        </section> : showSteps && routeOption ? <section className="route-detail-pane">
+        </section> : showSteps && visibleRoute ? <section className="route-detail-pane">
           <header className="tray-header">
             <button className="circle-button" type="button" aria-label="Back to directions" onClick={() => {
               setShowSteps(false); setSheet(1);
             }}><ArrowLeft size={19} /></button>
             <h2 className="tray-heading">Route Details</h2>
           </header>
-          {!!routeOption.unverifiedSegments?.length && <p className="world-hint">Dashed sections have no report confirming they’re open.</p>}
+          {!!visibleRoute.unverifiedSegments?.length && <p className="world-hint">Dashed sections have no report confirming they’re open.</p>}
           <p className="route-detail-label">Steps</p>
           <ol className="route-maneuvers">
             <li><span className="maneuver-pin start"><MapPin size={16} /></span><span><strong>{start?.label}</strong>{start?.detail && <small>{start.detail}</small>}</span></li>
-            {routeOption.steps.map((step, index) => {
+            {reviewSteps.map((step, index) => {
               const Icon = /^Arrive/.test(step.instruction) ? Flag :
                 /^(Turn|Keep|Continue|Merge) (slight |sharp )?left/.test(step.instruction) ? CornerUpLeft :
                 /^(Turn|Keep|Continue|Merge) (slight |sharp )?right/.test(step.instruction) ? CornerUpRight : ArrowUp;
@@ -537,10 +551,11 @@ export default function WorldApp() {
             <li><span className="maneuver-pin destination"><MapPin size={16} /></span><span><strong>{destination?.label}</strong>
               {destination?.detail && <small>{destination.detail}</small>}</span></li>
           </ol>
-          {canNavigate && <button className="world-primary navigation-start" type="button" onClick={startNavigation}>Start navigation</button>}
+          {canNavigate && start?.useDeviceLocation && <button className="world-primary navigation-start" type="button" onClick={startNavigation}>Start navigation</button>}
         </section> : <section className="trip">
           <header className="tray-header"><h2 className="tray-heading">Directions</h2>
             <button className="circle-button" aria-label="Close directions" onClick={() => {
+              locationRequest.current++; setLocatingStart(false);
               setTripOpen(false); setIncidentPanel(!!active); setPicking(null); resetRoute();
             }}><X size={18} /></button></header>
           <div className="direction-modes" role="group" aria-label="Travel mode">
@@ -565,7 +580,7 @@ export default function WorldApp() {
               <Crosshair size={15} aria-hidden /> {locatingStart ? "Locating…" : "My location"}
             </button>
             <button className="world-secondary" type="button" disabled={!start || !destination} onClick={() => {
-              resetRoute(); setStart(destination); setDestination(start); setPicking(null);
+              setTripPoint("start", destination); setDestination(start);
             }}><ArrowDownUp size={15} aria-hidden /> Swap</button>
           </div>
           <details className="direction-pick-options">

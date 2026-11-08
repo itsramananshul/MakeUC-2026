@@ -27,6 +27,8 @@ type Props = {
 };
 const style = "https://tiles.openfreemap.org/styles/liberty";
 const satelliteLayer = "satellite-basemap";
+const cincinnatiSatellite = "cincinnati-satellite";
+const cincinnatiSatelliteBounds: [number, number, number, number] = [-84.60, 39.04, -84.39, 39.21];
 const satelliteTiles = "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg";
 const maptilerKey = process.env.NEXT_PUBLIC_MAPTILER_KEY?.trim();
 const satelliteRoads = ["road_motorway", "road_trunk_primary", "road_secondary_tertiary", "road_street"];
@@ -49,6 +51,14 @@ function addSatellite(map: MapInstance) {
     });
   const firstLabel = map.getLayer("waterway_line_label") ? "waterway_line_label" : undefined;
   map.addLayer({ id: satelliteLayer, type: "raster", source: satelliteLayer }, firstLabel);
+  if (!maptilerKey) {
+    map.addSource(cincinnatiSatellite, {
+      type: "raster", tileSize: 256, minzoom: 13, maxzoom: 17, bounds: cincinnatiSatelliteBounds,
+      tiles: ["https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}"],
+      attribution: '<a href="https://www.usgs.gov/programs/national-geospatial-program/national-map" target="_blank" rel="noopener">USGS The National Map</a>',
+    });
+    map.addLayer({ id: cincinnatiSatellite, type: "raster", source: cincinnatiSatellite, minzoom: 13 }, firstLabel);
+  }
   for (const id of satelliteRoads) {
     const road = map.getStyle().layers.find(layer => layer.id === id);
     if (road?.type !== "line") continue;
@@ -116,6 +126,7 @@ export default function WorldMap(props: Props) {
   const [ready, setReady] = useState(false);
   const [message, setMessage] = useState("");
   const [satellite, setSatellite] = useState(true);
+  const [usingCincinnatiSatellite, setUsingCincinnatiSatellite] = useState(false);
   const locationPicker = props.incidentPreview !== undefined;
   useEffect(() => { inputs.current = props; }, [props]);
   useEffect(() => {
@@ -176,8 +187,22 @@ export default function WorldMap(props: Props) {
 
   useEffect(() => {
     const view = map.current;
+    if (!ready || !view || maptilerKey) return;
+    function updateSource() {
+      if (!view) return;
+      const { lng, lat } = view.getCenter();
+      const [west, south, east, north] = cincinnatiSatelliteBounds;
+      setUsingCincinnatiSatellite(view.getZoom() >= 13 && lng >= west && lng <= east && lat >= south && lat <= north);
+    }
+    updateSource();
+    view.on("moveend", updateSource);
+    return () => { view.off("moveend", updateSource); };
+  }, [ready]);
+
+  useEffect(() => {
+    const view = map.current;
     if (!ready || !view?.getLayer(satelliteLayer)) return;
-    const layers = [satelliteLayer, ...satelliteRoads.map(satelliteRoadLayer)];
+    const layers = [satelliteLayer, cincinnatiSatellite, ...satelliteRoads.map(satelliteRoadLayer)];
     for (const layer of layers) {
       if (view.getLayer(layer)) view.setLayoutProperty(layer, "visibility", satellite ? "visible" : "none");
     }
@@ -339,7 +364,7 @@ export default function WorldMap(props: Props) {
     {!locationPicker && <button type="button" className="world-basemap" aria-pressed={satellite}
       aria-label="Satellite basemap" onClick={() => setSatellite(value => !value)}>
       {satellite ? <Satellite size={16} aria-hidden /> : <Layers2 size={16} aria-hidden />}
-      {satellite ? maptilerKey ? "Satellite" : "Satellite · 2016" : "Streets"}
+      {satellite ? maptilerKey || usingCincinnatiSatellite ? "Satellite" : "Satellite · 2016" : "Streets"}
     </button>}
     {!locationPicker && satellite && maptilerKey && <a className="world-maptiler" href="https://www.maptiler.com/" target="_blank" rel="noreferrer">
       {/* eslint-disable-next-line @next/next/no-img-element */}

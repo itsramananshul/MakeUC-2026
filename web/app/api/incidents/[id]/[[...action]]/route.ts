@@ -1,3 +1,5 @@
+import { cincinnatiSurveySource, isCincinnatiSurvey } from "@/lib/cincinnati-survey";
+import { maxGeoTiffs } from "@/lib/imagery-limits";
 import { after } from "next/server";
 import { scanAerialRoads } from "@/lib/aerial-scan";
 import { droneStatus, startDroneJob } from "@/lib/drone";
@@ -123,8 +125,8 @@ export async function POST(request: Request, context: Context) {
         recordJob(id, job.id);
         return json(job, 202);
       }
-      if (!files.length || files.length > 8 || files.some(file => !/\.tiff?$/i.test(file.name))) {
-        throw new RequestError("Choose one to eight georeferenced TIFF files.");
+      if (!files.length || files.length > maxGeoTiffs || files.some(file => !/\.tiff?$/i.test(file.name))) {
+        throw new RequestError(`Choose 1 to ${maxGeoTiffs} georeferenced TIFF files.`);
       }
       const requestedSource = typeof data.get("source") === "string" ? String(data.get("source")).trim() : "";
       if (requestedSource.length > 160 || /[\u0000-\u001f\u007f]/.test(requestedSource)) {
@@ -135,10 +137,11 @@ export async function POST(request: Request, context: Context) {
       if (!Number.isFinite(acquiredAt.getTime()) || acquiredAt.getTime() < 0 || acquiredAt.getTime() > Date.now() + 86_400_000) {
         throw new RequestError("Enter a valid imagery acquisition date that is not in the future.");
       }
-      const result = await mosaic(await Promise.all(files.map(file => file.arrayBuffer())), false);
+      const rasters = await Promise.all(files.map(file => file.arrayBuffer()));
+      const result = await mosaic(rasters, false);
       const incident = saveIncidentImage(id, result.bytes, {
         bounds: geographicBounds(result.bounds), timestamp: acquiredAt.toISOString(),
-        source: requestedSource || (files.length === 1 ? "Uploaded GeoTIFF" : `${files.length} uploaded GeoTIFFs`),
+        source: isCincinnatiSurvey(rasters) ? cincinnatiSurveySource : (requestedSource === cincinnatiSurveySource ? "" : requestedSource) || (files.length === 1 ? "Uploaded GeoTIFF" : `${files.length} uploaded GeoTIFFs`),
       }, undefined, result.detail?.map(tile => ({ bounds: geographicBounds(tile.bounds), bytes: tile.bytes })));
       return json({ incident });
     }

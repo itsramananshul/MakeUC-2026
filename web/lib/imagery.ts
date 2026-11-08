@@ -1,6 +1,7 @@
 import { fromArrayBuffer } from "geotiff";
 import proj4 from "proj4";
 import sharp from "sharp";
+import { maxGeoTiffs } from "./imagery-limits";
 import { DRILL_BOUNDS, type Bounds } from "./imagery-frame";
 import { RequestError } from "./store";
 
@@ -78,24 +79,29 @@ const density = (source: Source) => Math.max(source.width / (source.bounds[2] - 
   source.height / (source.bounds[3] - source.bounds[1]));
 
 export async function mosaic(files: ArrayBuffer[], alignLegacy = true) {
-  if (!files.length || files.length > 8 || files.reduce((sum, file) => sum + file.byteLength, 0) > MAX_SIZE) {
-    throw new RequestError("Choose one to eight GeoTIFFs under 72 MB total.");
+  const limit = alignLegacy ? 8 : maxGeoTiffs;
+  if (!files.length || files.length > limit || files.reduce((sum, file) => sum + file.byteLength, 0) > MAX_SIZE) {
+    throw new RequestError(`Choose 1 to ${limit} GeoTIFFs under 72 MB total.`);
   }
-  const sources: Source[] = [];
-  for (const file of files) sources.push(await loadSource(file, alignLegacy ? 1800 : 3072));
-  const coverage = union(sources);
+  const fullSize = alignLegacy ? 1800 : 3072;
+  // Keep the decoded overview within the previous eight-image pixel budget.
+  const overviewDimension = files.length > 8 ? Math.floor(fullSize * Math.sqrt(8 / files.length)) : fullSize;
+  const sources: { source: Source; file: ArrayBuffer }[] = [];
+  for (const file of files) sources.push({ source: await loadSource(file, overviewDimension), file });
+  const coverage = union(sources.map(entry => entry.source));
   const aligned = alignLegacy && coverage[0] < DRILL_BOUNDS[2] && coverage[2] > DRILL_BOUNDS[0] &&
     coverage[1] < DRILL_BOUNDS[3] && coverage[3] > DRILL_BOUNDS[1] &&
     Math.max(coverage[2] - coverage[0], coverage[3] - coverage[1]) < 15_000;
   const bounds = aligned ? DRILL_BOUNDS : coverage;
-  if (!alignLegacy) sources.sort((a, b) => density(b) - density(a));
+  if (!alignLegacy) sources.sort((a, b) => density(b.source) - density(a.source));
   const dx = bounds[2] - bounds[0], dy = bounds[3] - bounds[1];
-  const size = alignLegacy ? 1500 : Math.min(3072, Math.max(dx, dy) * density(sources[0]));
-  const overview = await renderRaster(bounds, sources, size, 87);
+  const size = alignLegacy ? 1500 : Math.min(3072, Math.max(dx, dy) * density(sources[0].source));
+  const overview = await renderRaster(bounds, sources.map(entry => entry.source), size, 87);
   if (!overview) throw new RequestError("The files do not contain visible map coverage.");
   const detail: DetailRaster[] = [];
   if (!alignLegacy && sources.length > 1) {
-    for (const source of [...sources].reverse()) {
+    for (const entry of sources.reverse()) {
+      const source = overviewDimension < fullSize ? await loadSource(entry.file, fullSize) : entry.source;
       const result = await renderRaster(source.bounds, [source], Math.max(source.width, source.height), 93);
       if (result) detail.push({ bounds: source.bounds, bytes: result.bytes });
     }

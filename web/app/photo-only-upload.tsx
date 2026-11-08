@@ -1,5 +1,6 @@
 "use client";
 
+import { maxGeoTiffs } from "@/lib/imagery-limits";
 import { Images, LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import hashes from "@/lib/catia-image-hashes.json";
@@ -108,7 +109,7 @@ export default function PhotoOnlyUpload({ onImport }: { onImport: (incident: Inc
     <label className="upload-well">
       <Images size={22} aria-hidden />
       <strong>{files.length ? `${files.length} ${files.length === 1 ? "image" : "images"} selected` : "Choose aerial images"}</strong>
-      <span>Prepared Catia La Mar images, GeoTIFFs, or overlapping GPS-tagged drone photos</span>
+      <span>Prepared Catia La Mar images, up to {maxGeoTiffs} GeoTIFFs, or overlapping GPS-tagged drone photos</span>
       <input type="file" multiple accept="image/jpeg,image/png,image/webp,.tif,.tiff" disabled={locked}
         onChange={event => { setFiles(Array.from(event.target.files ?? [])); setError(""); }} />
     </label>

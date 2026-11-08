@@ -1,4 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { syncCincinnatiPassages } from "./cincinnati-survey";
 import { publishIncidentUpdate } from "./incident-events";
 import { database, RequestError } from "./store";
 import {
@@ -123,6 +124,7 @@ export function createIncident(name: string, bounds: GeographicBounds, observati
     if (survey) {
       incident.imagery = storeSurvey(survey.bytes, { bounds, source: survey.source, timestamp: survey.timestamp }, survey.detail ?? []);
       incident.surveys = [incident.imagery];
+      syncCincinnatiPassages(incident);
     }
     if (observation) {
       const report: FieldReport = {
@@ -222,6 +224,7 @@ export function saveIncidentImage(id: string, bytes: Buffer, data: Omit<Incident
     }
     incident.surveys = [...surveys, newest];
     incident.imagery = newest;
+    syncCincinnatiPassages(incident);
     if (jobId) db.prepare("UPDATE incident_jobs SET state = 'complete' WHERE incident_id = ? AND id = ?").run(id, jobId);
     return true;
   });
@@ -243,6 +246,7 @@ export function removeIncidentImagery(id: string) {
     incident.unpublishedSurveys = [...(incident.unpublishedSurveys ?? []), ...(incident.surveys ?? [incident.imagery])];
     incident.imagery = null;
     incident.surveys = [];
+    syncCincinnatiPassages(incident);
     return true;
   });
 }

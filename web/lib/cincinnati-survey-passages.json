@@ -1,0 +1,65 @@
+[
+  {
+    "id": "field-f492b8d5df0b171f1555",
+    "from": {
+      "latitude": 39.10728237174362,
+      "longitude": -84.50946144188299
+    },
+    "to": {
+      "latitude": 39.10797968342513,
+      "longitude": -84.5086005506904
+    },
+    "state": "open",
+    "label": "Field-reported connection",
+    "via": [
+      {
+        "latitude": 39.10741183097369,
+        "longitude": -84.50926802580022
+      },
+      {
+        "latitude": 39.10753540547199,
+        "longitude": -84.50911632691134
+      },
+      {
+        "latitude": 39.10761484610623,
+        "longitude": -84.508915325884
+      },
+      {
+        "latitude": 39.10779726500172,
+        "longitude": -84.5087674194674
+      }
+    ]
+  },
+  {
+    "id": "field-522a77cee4fbcfafe89e",
+    "from": {
+      "latitude": 39.10792208455189,
+      "longitude": -84.510308079374
+    },
+    "to": {
+      "latitude": 39.108005335893466,
+      "longitude": -84.50962156857162
+    },
+    "state": "blocked",
+    "label": "Field-reported connection"
+  },
+  {
+    "id": "field-894ac3c5a21ed97587b5",
+    "from": {
+      "latitude": 39.108035504447514,
+      "longitude": -84.50963358905926
+    },
+    "to": {
+      "latitude": 39.107748287028386,
+      "longitude": -84.50954777520894
+    },
+    "via": [
+      {
+        "latitude": 39.10787316431103,
+        "longitude": -84.50959068213427
+      }
+    ],
+    "state": "blocked",
+    "label": "Field-reported connection"
+  }
+]
