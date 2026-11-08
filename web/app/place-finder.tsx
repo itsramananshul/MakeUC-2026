@@ -1,8 +1,17 @@
 "use client";
 
-import { ArrowRight, ChevronRight, MapPin, Search, X } from "lucide-react";
+import { ArrowRight, ChevronRight, Clock, MapPin, Search, X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { Place } from "@/lib/incident-types";
+
+const recentKey = "gaslight.recentPlaces";
+function recentPlaces(): Place[] {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(recentKey) ?? "[]");
+    return Array.isArray(saved) ? saved.filter(item => item && typeof item.id === "string" &&
+      typeof item.name === "string" && Number.isFinite(item.latitude) && Number.isFinite(item.longitude)).slice(0, 12) : [];
+  } catch { return []; }
+}
 
 export default function PlaceFinder({ label, initialValue = "", autoFocus = false, stop, onEdit, onFocus, onSelect, onCancel }: {
   label: string; initialValue?: string; autoFocus?: boolean; stop?: "start" | "destination";
@@ -13,6 +22,7 @@ export default function PlaceFinder({ label, initialValue = "", autoFocus = fals
   const [focused, setFocused] = useState(autoFocus);
   const [matches, setMatches] = useState<{ query: string; places: Place[] } | null>(null);
   const [status, setStatus] = useState("");
+  const [recent, setRecent] = useState<Place[]>([]);
   const [committed, setCommitted] = useState(initialValue);
   const current = useRef<AbortController | null>(null);
   const selectPlace = useRef(onSelect);
@@ -20,6 +30,7 @@ export default function PlaceFinder({ label, initialValue = "", autoFocus = fals
   const visible = focused && query.length >= 2 && query !== committed;
   const results = visible && matches?.query === query ? matches.places : [];
 
+  useEffect(() => { setRecent(recentPlaces()); }, []);
   useEffect(() => { selectPlace.current = onSelect; }, [onSelect]);
   useEffect(() => () => current.current?.abort(), []);
   useEffect(() => {
@@ -31,6 +42,9 @@ export default function PlaceFinder({ label, initialValue = "", autoFocus = fals
   function choose(place: Place) {
     current.current?.abort();
     setDraft(place.name); setCommitted(place.name); setStatus(""); setMatches(null);
+    const next = [place, ...recentPlaces().filter(item => item.id !== place.id)].slice(0, 12);
+    try { localStorage.setItem(recentKey, JSON.stringify(next)); } catch {}
+    setRecent(next);
     selectPlace.current(place);
   }
 
@@ -89,7 +103,7 @@ export default function PlaceFinder({ label, initialValue = "", autoFocus = fals
     onCancel?.();
   }
 
-  return <div className={`place-finder${stop ? ` stop-finder ${stop}` : ""}`} onFocus={() => setFocused(true)}
+  return <div className={`place-finder${stop ? ` stop-finder ${stop}` : ""}`} onFocus={() => { setFocused(true); setRecent(recentPlaces()); }}
     onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}>
     <div className="place-search-row">
       <form className={`world-search${draft ? " has-text" : ""}`} onSubmit={submit}>
@@ -109,6 +123,12 @@ export default function PlaceFinder({ label, initialValue = "", autoFocus = fals
       {onCancel && <button className="mobile-search-cancel" type="button" onClick={cancel}>Cancel</button>}
     </div>
     {visible && status && <small className="direction-search-status" role="status">{status}</small>}
+    {focused && !query && recent.length > 0 && <div className="world-results" aria-label="Recent searches">
+      <small className="world-attribution">Recent searches</small>
+      {recent.map(item => <button key={item.id} type="button" className="world-result" onClick={() => choose(item)}>
+        <Clock size={16} aria-hidden /><span><strong>{item.name}</strong><small>{item.detail}</small></span><ChevronRight size={14} aria-hidden />
+      </button>)}
+    </div>}
     {!!results.length && <div className="world-results" aria-label={`${label} results`}>
       {results.map(item => <button key={item.id} type="button" className="world-result" onClick={() => choose(item)}>
         <MapPin size={16} aria-hidden /><span><strong>{item.name}</strong><small>{item.detail}</small></span><ChevronRight size={14} aria-hidden />

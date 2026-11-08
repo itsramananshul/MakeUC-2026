@@ -4,6 +4,7 @@ import {
   ArrowDownUp, ArrowLeft, ArrowUp, Bike, BusFront, CarFront, ChevronRight, CornerUpLeft, CornerUpRight,
   Crosshair, Flag, Footprints, Globe, Info, KeyRound, Layers3, LoaderCircle, MapPin, PanelLeft, Plus, Route, Satellite, ScanLine, Search, ShieldAlert, X,
 } from "lucide-react";
+import catia from "@/lib/catia-imagery.json";
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { distanceMeters, incidentExtent, withinIncident, type AerialScan, type Coordinate, type GeographicBounds, type Incident, type IncidentImagery, type IncidentRoute, type IncidentSummary, type Place, type TravelMode } from "@/lib/incident-types";
@@ -120,9 +121,10 @@ export default function WorldApp() {
   const navigation = useLiveNavigation(`${incidentAreas}:${navigationRevision}`);
   const { trip: liveTrip, snapshot: guidance } = navigation;
   const canNavigate = !routing && !!start && !!destination && visibleRoute?.status === "complete" &&
-    !visibleRoute.unverifiedSegments?.length && visibleRoute.coordinates.length >= 2;
+    visibleRoute.coordinates.length >= 2;
+  const canGuide = canNavigate && !!start?.useDeviceLocation && !visibleRoute?.unverifiedSegments?.length;
   const reviewSteps = routeOption?.steps ?? (visibleRoute ? [{
-    instruction: visibleRoute.incidentId ? "Follow the reported passage" : "Follow the mapped route",
+    instruction: visibleRoute.unverifiedSegments?.length ? "Review the mapped route" : visibleRoute.incidentId ? "Follow the reported passage" : "Follow the mapped route",
     distanceMeters: visibleRoute.distanceMeters,
   }] : []);
   const reports = active?.reports ?? [];
@@ -250,7 +252,7 @@ export default function WorldApp() {
   }
   function startNavigation() {
     if (!canNavigate || !start || !destination || !visibleRoute) return;
-    if (!start.useDeviceLocation) {
+    if (!canGuide) {
       setShowSteps(true); setSheet(2);
       return;
     }
@@ -492,6 +494,7 @@ export default function WorldApp() {
               <button className="world-primary" type="button" onClick={() => startTrip(place)}><Route size={15} /> Directions</button>
               {!active && <button className="world-secondary" type="button" onClick={() => { setPicking(null); setModal("create"); }}><Plus size={15} /> Report here</button>}
             </div>
+            {place.id === catia.place.id && <a className="world-text" href="/venezuela/catia-la-mar">View aerial imagery</a>}
             {(place.name === "Venezuela" || /(?:^|,\s*)Venezuela$/i.test(place.detail)) &&
               <a className="world-text" href="/venezuela">June 2026 earthquake imagery</a>}
           </div>}
@@ -533,9 +536,9 @@ export default function WorldApp() {
             <button className="circle-button" type="button" aria-label="Back to directions" onClick={() => {
               setShowSteps(false); setSheet(1);
             }}><ArrowLeft size={19} /></button>
-            <h2 className="tray-heading">Route Details</h2>
+            <h2 className="tray-heading">{visibleRoute.unverifiedSegments?.length ? "Route preview" : "Route Details"}</h2>
           </header>
-          {!!visibleRoute.unverifiedSegments?.length && <p className="world-hint">Dashed sections have no report confirming they’re open.</p>}
+          {!!visibleRoute.unverifiedSegments?.length && <p className="world-hint">Preview only. Dashed sections have no report confirming they’re open.</p>}
           <p className="route-detail-label">Steps</p>
           <ol className="route-maneuvers">
             <li><span className="maneuver-pin start"><MapPin size={16} /></span><span><strong>{start?.label}</strong>{start?.detail && <small>{start.detail}</small>}</span></li>
@@ -551,7 +554,7 @@ export default function WorldApp() {
             <li><span className="maneuver-pin destination"><MapPin size={16} /></span><span><strong>{destination?.label}</strong>
               {destination?.detail && <small>{destination.detail}</small>}</span></li>
           </ol>
-          {canNavigate && start?.useDeviceLocation && <button className="world-primary navigation-start" type="button" onClick={startNavigation}>Start navigation</button>}
+          {canGuide && <button className="world-primary navigation-start" type="button" onClick={startNavigation}>Go</button>}
         </section> : <section className="trip">
           <header className="tray-header"><h2 className="tray-heading">Directions</h2>
             <button className="circle-button" aria-label="Close directions" onClick={() => {
@@ -621,7 +624,7 @@ export default function WorldApp() {
               {visibleRoute.distanceMeters > 0 && ` · ${formatDistance(visibleRoute.distanceMeters)}`}</strong>
             <small>{visibleRoute.reason}</small>
           </div>}
-          {canNavigate && <button className="world-primary navigation-start" type="button" onClick={startNavigation}>Start navigation</button>}
+          {canNavigate && <button className="world-primary navigation-start" type="button" onClick={startNavigation}>Go</button>}
         </section>)}
 
         {!directionsVisible && (active ? <section className="world-section active-incident mobile-search-content">

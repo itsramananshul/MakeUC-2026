@@ -1,1 +1,1 @@
-export const maxGeoTiffs = 30;
+export const maxGeoTiffs = 100;

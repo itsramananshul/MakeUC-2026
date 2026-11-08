@@ -589,6 +589,22 @@ final class AftermapTests: XCTestCase {
         XCTAssertEqual(places.first?.id, "nyc")
     }
 
+    @MainActor
+    func testRecentPlacesPersistInMostRecentOrder() throws {
+        let suite = "aftermap.recentPlaces.tests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let first = PlaceResult(id: "one", name: "First", detail: "", latitude: 39, longitude: -84)
+        let second = PlaceResult(id: "two", name: "Second", detail: "", latitude: 40, longitude: -85)
+        let store = WorldMapStore(defaults: defaults)
+        store.choosePlace(first)
+        store.choosePlace(second)
+        store.choosePlace(first)
+
+        XCTAssertEqual(WorldMapStore(defaults: defaults).recentPlaces, [first, second])
+    }
+
     func testExactPlaceSearchUsesCanonicalEndpoint() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]

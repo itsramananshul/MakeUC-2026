@@ -1,851 +1,101 @@
 {
   "id": "catia-la-mar",
   "place": {
-    "id": "N-922793109",
+    "id": "canonical-ve-catia-la-mar",
     "name": "Catia La Mar",
     "detail": "Vargas, Venezuela",
     "latitude": 10.5992669,
     "longitude": -67.0145106
   },
+  "coverage": {
+    "west": -67.02723796910195,
+    "south": 10.588635982057848,
+    "east": -67.00675638062401,
+    "north": 10.608768144612364
+  },
   "imagery": {
-    "url": "/catia-la-mar/tiles/overview.webp",
+    "url": "/catia-la-mar/tiles/downtown-22.webp",
     "bounds": {
-      "west": -67.11762645299004,
-      "south": 10.544579022013329,
-      "east": -66.99635388963392,
-      "north": 10.624051809710494
+      "west": -67.02041077294263,
+      "south": 10.59534684996971,
+      "east": -67.01358357678332,
+      "north": 10.602057570850825
     },
-    "source": "AI-generated aerial imagery",
-    "timestamp": "2026-11-08T06:06:12.386110+00:00",
+    "source": "AI-generated exercise imagery",
+    "timestamp": "2026-11-08T09:18:35.642500+00:00",
     "detailTiles": [
       {
-        "url": "/catia-la-mar/tiles/00.webp",
+        "url": "/catia-la-mar/tiles/downtown-11.webp",
         "bounds": {
-          "west": -67.11762645299004,
-          "south": 10.544579022013329,
-          "east": -67.10415172372826,
-          "north": 10.55782591593824
+          "west": -67.02723796910195,
+          "south": 10.602057570850825,
+          "east": -67.02041077294263,
+          "north": 10.608768144612364
         }
       },
       {
-        "url": "/catia-la-mar/tiles/10.webp",
+        "url": "/catia-la-mar/tiles/downtown-12.webp",
         "bounds": {
-          "west": -67.10415172372826,
-          "south": 10.544579022013329,
-          "east": -67.09067699446646,
-          "north": 10.55782591593824
+          "west": -67.02041077294263,
+          "south": 10.602057570850825,
+          "east": -67.01358357678332,
+          "north": 10.608768144612364
         }
       },
       {
-        "url": "/catia-la-mar/tiles/20.webp",
+        "url": "/catia-la-mar/tiles/downtown-13.webp",
         "bounds": {
-          "west": -67.09067699446646,
-          "south": 10.544579022013329,
-          "east": -67.07720226520466,
-          "north": 10.55782591593824
+          "west": -67.01358357678332,
+          "south": 10.602057570850825,
+          "east": -67.00675638062401,
+          "north": 10.608768144612364
         }
       },
       {
-        "url": "/catia-la-mar/tiles/30.webp",
+        "url": "/catia-la-mar/tiles/downtown-21.webp",
         "bounds": {
-          "west": -67.07720226520466,
-          "south": 10.544579022013329,
-          "east": -67.06372753594287,
-          "north": 10.55782591593824
+          "west": -67.02723796910195,
+          "south": 10.59534684996971,
+          "east": -67.02041077294263,
+          "north": 10.602057570850825
         }
       },
       {
-        "url": "/catia-la-mar/tiles/50.webp",
+        "url": "/catia-la-mar/tiles/downtown-23.webp",
         "bounds": {
-          "west": -67.05025280668109,
-          "south": 10.544579022013329,
-          "east": -67.03677807741929,
-          "north": 10.55782591593824
+          "west": -67.01358357678332,
+          "south": 10.59534684996971,
+          "east": -67.00675638062401,
+          "north": 10.602057570850825
         }
       },
       {
-        "url": "/catia-la-mar/tiles/60.webp",
+        "url": "/catia-la-mar/tiles/downtown-31.webp",
         "bounds": {
-          "west": -67.03677807741929,
-          "south": 10.544579022013329,
-          "east": -67.0233033481575,
-          "north": 10.55782591593824
+          "west": -67.02723796910195,
+          "south": 10.588635982057848,
+          "east": -67.02041077294263,
+          "north": 10.59534684996971
         }
       },
       {
-        "url": "/catia-la-mar/tiles/70.webp",
+        "url": "/catia-la-mar/tiles/downtown-32.webp",
         "bounds": {
-          "west": -67.0233033481575,
-          "south": 10.544579022013329,
-          "east": -67.0098286188957,
-          "north": 10.55782591593824
+          "west": -67.02041077294263,
+          "south": 10.588635982057848,
+          "east": -67.01358357678332,
+          "north": 10.59534684996971
         }
       },
       {
-        "url": "/catia-la-mar/tiles/01.webp",
+        "url": "/catia-la-mar/tiles/downtown-33.webp",
         "bounds": {
-          "west": -67.11762645299004,
-          "south": 10.55782591593824,
-          "east": -67.10415172372826,
-          "north": 10.571072239050693
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/11.webp",
-        "bounds": {
-          "west": -67.10415172372826,
-          "south": 10.55782591593824,
-          "east": -67.09067699446646,
-          "north": 10.571072239050693
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/21.webp",
-        "bounds": {
-          "west": -67.09067699446646,
-          "south": 10.55782591593824,
-          "east": -67.07720226520466,
-          "north": 10.571072239050693
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/31.webp",
-        "bounds": {
-          "west": -67.07720226520466,
-          "south": 10.55782591593824,
-          "east": -67.06372753594287,
-          "north": 10.571072239050693
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/41.webp",
-        "bounds": {
-          "west": -67.06372753594287,
-          "south": 10.55782591593824,
-          "east": -67.05025280668109,
-          "north": 10.571072239050693
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/51.webp",
-        "bounds": {
-          "west": -67.05025280668109,
-          "south": 10.55782591593824,
-          "east": -67.03677807741929,
-          "north": 10.571072239050693
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/61.webp",
-        "bounds": {
-          "west": -67.03677807741929,
-          "south": 10.55782591593824,
-          "east": -67.0233033481575,
-          "north": 10.571072239050693
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/71.webp",
-        "bounds": {
-          "west": -67.0233033481575,
-          "south": 10.55782591593824,
-          "east": -67.0098286188957,
-          "north": 10.571072239050693
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/81.webp",
-        "bounds": {
-          "west": -67.0098286188957,
-          "south": 10.55782591593824,
-          "east": -66.99635388963392,
-          "north": 10.571072239050693
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/12.webp",
-        "bounds": {
-          "west": -67.10415172372826,
-          "south": 10.571072239050693,
-          "east": -67.09067699446646,
-          "north": 10.584317990667302
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/22.webp",
-        "bounds": {
-          "west": -67.09067699446646,
-          "south": 10.571072239050693,
-          "east": -67.07720226520466,
-          "north": 10.584317990667302
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/32.webp",
-        "bounds": {
-          "west": -67.07720226520466,
-          "south": 10.571072239050693,
-          "east": -67.06372753594287,
-          "north": 10.584317990667302
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/42.webp",
-        "bounds": {
-          "west": -67.06372753594287,
-          "south": 10.571072239050693,
-          "east": -67.05025280668109,
-          "north": 10.584317990667302
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/52.webp",
-        "bounds": {
-          "west": -67.05025280668109,
-          "south": 10.571072239050693,
-          "east": -67.03677807741929,
-          "north": 10.584317990667302
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/62.webp",
-        "bounds": {
-          "west": -67.03677807741929,
-          "south": 10.571072239050693,
-          "east": -67.0233033481575,
-          "north": 10.584317990667302
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/72.webp",
-        "bounds": {
-          "west": -67.0233033481575,
-          "south": 10.571072239050693,
-          "east": -67.0098286188957,
-          "north": 10.584317990667302
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/13.webp",
-        "bounds": {
-          "west": -67.10415172372826,
-          "south": 10.584317990667302,
-          "east": -67.09067699446646,
-          "north": 10.597563170104834
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/23.webp",
-        "bounds": {
-          "west": -67.09067699446646,
-          "south": 10.584317990667302,
-          "east": -67.07720226520466,
-          "north": 10.597563170104834
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/33.webp",
-        "bounds": {
-          "west": -67.07720226520466,
-          "south": 10.584317990667302,
-          "east": -67.06372753594287,
-          "north": 10.597563170104834
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/43.webp",
-        "bounds": {
-          "west": -67.06372753594287,
-          "south": 10.584317990667302,
-          "east": -67.05025280668109,
-          "north": 10.597563170104834
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/53.webp",
-        "bounds": {
-          "west": -67.05025280668109,
-          "south": 10.584317990667302,
-          "east": -67.03677807741929,
-          "north": 10.597563170104834
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/63.webp",
-        "bounds": {
-          "west": -67.03677807741929,
-          "south": 10.584317990667302,
-          "east": -67.0233033481575,
-          "north": 10.597563170104834
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/73.webp",
-        "bounds": {
-          "west": -67.0233033481575,
-          "south": 10.584317990667302,
-          "east": -67.0098286188957,
-          "north": 10.597563170104834
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/24.webp",
-        "bounds": {
-          "west": -67.09067699446646,
-          "south": 10.597563170104834,
-          "east": -67.07720226520466,
-          "north": 10.610807776680208
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/34.webp",
-        "bounds": {
-          "west": -67.07720226520466,
-          "south": 10.597563170104834,
-          "east": -67.06372753594287,
-          "north": 10.610807776680208
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/44.webp",
-        "bounds": {
-          "west": -67.06372753594287,
-          "south": 10.597563170104834,
-          "east": -67.05025280668109,
-          "north": 10.610807776680208
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/54.webp",
-        "bounds": {
-          "west": -67.05025280668109,
-          "south": 10.597563170104834,
-          "east": -67.03677807741929,
-          "north": 10.610807776680208
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/64.webp",
-        "bounds": {
-          "west": -67.03677807741929,
-          "south": 10.597563170104834,
-          "east": -67.0233033481575,
-          "north": 10.610807776680208
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/74.webp",
-        "bounds": {
-          "west": -67.0233033481575,
-          "south": 10.597563170104834,
-          "east": -67.0098286188957,
-          "north": 10.610807776680208
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/55.webp",
-        "bounds": {
-          "west": -67.05025280668109,
-          "south": 10.610807776680208,
-          "east": -67.03677807741929,
-          "north": 10.624051809710494
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/65.webp",
-        "bounds": {
-          "west": -67.03677807741929,
-          "south": 10.610807776680208,
-          "east": -67.0233033481575,
-          "north": 10.624051809710494
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/detail-center-north.webp",
-        "bounds": {
-          "west": -67.0330802919708,
-          "south": 10.605278250141712,
-          "east": -67.0284806288602,
-          "north": 10.609799183947281
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/detail-center-south.webp",
-        "bounds": {
-          "west": -67.04107541995403,
-          "south": 10.591840619149394,
-          "east": -67.03640418047658,
-          "north": 10.596432233468402
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/detail-east-north.webp",
-        "bounds": {
-          "west": -67.02058067863233,
-          "south": 10.606070352687833,
-          "east": -67.01598130437763,
-          "north": 10.610591117161468
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/detail-east-south.webp",
-        "bounds": {
-          "west": -67.01939359910163,
-          "south": 10.592408473987865,
-          "east": -67.01490174059516,
-          "north": 10.596823404118423
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/detail-west-north.webp",
-        "bounds": {
-          "west": -67.0472900468392,
-          "south": 10.597000000000001,
-          "east": -67.044,
-          "north": 10.600233917946115
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/detail-west-south.webp",
-        "bounds": {
-          "west": -67.05951828423507,
-          "south": 10.586276314343513,
-          "east": -67.05502670781448,
-          "north": 10.590691409558392
-        }
-      },
-      {
-        "url": "/catia-la-mar/tiles/detail-coastal.webp",
-        "bounds": {
-          "west": -67.01363748,
-          "south": 10.607240620000004,
-          "east": -67.0090381,
-          "north": 10.611761369999991
+          "west": -67.01358357678332,
+          "south": 10.588635982057848,
+          "east": -67.00675638062401,
+          "north": 10.59534684996971
         }
       }
     ]
-  },
-  "surveys": [
-    {
-      "url": "/local-preview/catia-la-mar/tiles/overview.webp",
-      "bounds": {
-        "west": -67.11762645299004,
-        "south": 10.544579022013329,
-        "east": -66.99635388963392,
-        "north": 10.624051809710494
-      },
-      "source": "AI-generated Catia La Mar aerial imagery",
-      "timestamp": "2026-11-08T06:06:12.386110+00:00",
-      "detailTiles": [
-        {
-          "url": "/local-preview/catia-la-mar/tiles/00.webp",
-          "bounds": {
-            "west": -67.11762645299004,
-            "south": 10.544579022013329,
-            "east": -67.10415172372826,
-            "north": 10.55782591593824
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/10.webp",
-          "bounds": {
-            "west": -67.10415172372826,
-            "south": 10.544579022013329,
-            "east": -67.09067699446646,
-            "north": 10.55782591593824
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/20.webp",
-          "bounds": {
-            "west": -67.09067699446646,
-            "south": 10.544579022013329,
-            "east": -67.07720226520466,
-            "north": 10.55782591593824
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/30.webp",
-          "bounds": {
-            "west": -67.07720226520466,
-            "south": 10.544579022013329,
-            "east": -67.06372753594287,
-            "north": 10.55782591593824
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/50.webp",
-          "bounds": {
-            "west": -67.05025280668109,
-            "south": 10.544579022013329,
-            "east": -67.03677807741929,
-            "north": 10.55782591593824
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/60.webp",
-          "bounds": {
-            "west": -67.03677807741929,
-            "south": 10.544579022013329,
-            "east": -67.0233033481575,
-            "north": 10.55782591593824
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/70.webp",
-          "bounds": {
-            "west": -67.0233033481575,
-            "south": 10.544579022013329,
-            "east": -67.0098286188957,
-            "north": 10.55782591593824
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/01.webp",
-          "bounds": {
-            "west": -67.11762645299004,
-            "south": 10.55782591593824,
-            "east": -67.10415172372826,
-            "north": 10.571072239050693
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/11.webp",
-          "bounds": {
-            "west": -67.10415172372826,
-            "south": 10.55782591593824,
-            "east": -67.09067699446646,
-            "north": 10.571072239050693
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/21.webp",
-          "bounds": {
-            "west": -67.09067699446646,
-            "south": 10.55782591593824,
-            "east": -67.07720226520466,
-            "north": 10.571072239050693
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/31.webp",
-          "bounds": {
-            "west": -67.07720226520466,
-            "south": 10.55782591593824,
-            "east": -67.06372753594287,
-            "north": 10.571072239050693
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/41.webp",
-          "bounds": {
-            "west": -67.06372753594287,
-            "south": 10.55782591593824,
-            "east": -67.05025280668109,
-            "north": 10.571072239050693
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/51.webp",
-          "bounds": {
-            "west": -67.05025280668109,
-            "south": 10.55782591593824,
-            "east": -67.03677807741929,
-            "north": 10.571072239050693
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/61.webp",
-          "bounds": {
-            "west": -67.03677807741929,
-            "south": 10.55782591593824,
-            "east": -67.0233033481575,
-            "north": 10.571072239050693
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/71.webp",
-          "bounds": {
-            "west": -67.0233033481575,
-            "south": 10.55782591593824,
-            "east": -67.0098286188957,
-            "north": 10.571072239050693
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/81.webp",
-          "bounds": {
-            "west": -67.0098286188957,
-            "south": 10.55782591593824,
-            "east": -66.99635388963392,
-            "north": 10.571072239050693
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/12.webp",
-          "bounds": {
-            "west": -67.10415172372826,
-            "south": 10.571072239050693,
-            "east": -67.09067699446646,
-            "north": 10.584317990667302
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/22.webp",
-          "bounds": {
-            "west": -67.09067699446646,
-            "south": 10.571072239050693,
-            "east": -67.07720226520466,
-            "north": 10.584317990667302
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/32.webp",
-          "bounds": {
-            "west": -67.07720226520466,
-            "south": 10.571072239050693,
-            "east": -67.06372753594287,
-            "north": 10.584317990667302
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/42.webp",
-          "bounds": {
-            "west": -67.06372753594287,
-            "south": 10.571072239050693,
-            "east": -67.05025280668109,
-            "north": 10.584317990667302
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/52.webp",
-          "bounds": {
-            "west": -67.05025280668109,
-            "south": 10.571072239050693,
-            "east": -67.03677807741929,
-            "north": 10.584317990667302
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/62.webp",
-          "bounds": {
-            "west": -67.03677807741929,
-            "south": 10.571072239050693,
-            "east": -67.0233033481575,
-            "north": 10.584317990667302
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/72.webp",
-          "bounds": {
-            "west": -67.0233033481575,
-            "south": 10.571072239050693,
-            "east": -67.0098286188957,
-            "north": 10.584317990667302
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/13.webp",
-          "bounds": {
-            "west": -67.10415172372826,
-            "south": 10.584317990667302,
-            "east": -67.09067699446646,
-            "north": 10.597563170104834
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/23.webp",
-          "bounds": {
-            "west": -67.09067699446646,
-            "south": 10.584317990667302,
-            "east": -67.07720226520466,
-            "north": 10.597563170104834
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/33.webp",
-          "bounds": {
-            "west": -67.07720226520466,
-            "south": 10.584317990667302,
-            "east": -67.06372753594287,
-            "north": 10.597563170104834
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/43.webp",
-          "bounds": {
-            "west": -67.06372753594287,
-            "south": 10.584317990667302,
-            "east": -67.05025280668109,
-            "north": 10.597563170104834
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/53.webp",
-          "bounds": {
-            "west": -67.05025280668109,
-            "south": 10.584317990667302,
-            "east": -67.03677807741929,
-            "north": 10.597563170104834
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/63.webp",
-          "bounds": {
-            "west": -67.03677807741929,
-            "south": 10.584317990667302,
-            "east": -67.0233033481575,
-            "north": 10.597563170104834
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/73.webp",
-          "bounds": {
-            "west": -67.0233033481575,
-            "south": 10.584317990667302,
-            "east": -67.0098286188957,
-            "north": 10.597563170104834
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/24.webp",
-          "bounds": {
-            "west": -67.09067699446646,
-            "south": 10.597563170104834,
-            "east": -67.07720226520466,
-            "north": 10.610807776680208
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/34.webp",
-          "bounds": {
-            "west": -67.07720226520466,
-            "south": 10.597563170104834,
-            "east": -67.06372753594287,
-            "north": 10.610807776680208
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/44.webp",
-          "bounds": {
-            "west": -67.06372753594287,
-            "south": 10.597563170104834,
-            "east": -67.05025280668109,
-            "north": 10.610807776680208
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/54.webp",
-          "bounds": {
-            "west": -67.05025280668109,
-            "south": 10.597563170104834,
-            "east": -67.03677807741929,
-            "north": 10.610807776680208
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/64.webp",
-          "bounds": {
-            "west": -67.03677807741929,
-            "south": 10.597563170104834,
-            "east": -67.0233033481575,
-            "north": 10.610807776680208
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/74.webp",
-          "bounds": {
-            "west": -67.0233033481575,
-            "south": 10.597563170104834,
-            "east": -67.0098286188957,
-            "north": 10.610807776680208
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/55.webp",
-          "bounds": {
-            "west": -67.05025280668109,
-            "south": 10.610807776680208,
-            "east": -67.03677807741929,
-            "north": 10.624051809710494
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/65.webp",
-          "bounds": {
-            "west": -67.03677807741929,
-            "south": 10.610807776680208,
-            "east": -67.0233033481575,
-            "north": 10.624051809710494
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/detail-center-north.webp",
-          "bounds": {
-            "west": -67.0330802919708,
-            "south": 10.605278250141712,
-            "east": -67.0284806288602,
-            "north": 10.609799183947281
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/detail-center-south.webp",
-          "bounds": {
-            "west": -67.04107541995403,
-            "south": 10.591840619149394,
-            "east": -67.03640418047658,
-            "north": 10.596432233468402
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/detail-east-north.webp",
-          "bounds": {
-            "west": -67.02058067863233,
-            "south": 10.606070352687833,
-            "east": -67.01598130437763,
-            "north": 10.610591117161468
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/detail-east-south.webp",
-          "bounds": {
-            "west": -67.01939359910163,
-            "south": 10.592408473987865,
-            "east": -67.01490174059516,
-            "north": 10.596823404118423
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/detail-west-north.webp",
-          "bounds": {
-            "west": -67.0472900468392,
-            "south": 10.597000000000001,
-            "east": -67.044,
-            "north": 10.600233917946115
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/detail-west-south.webp",
-          "bounds": {
-            "west": -67.05951828423507,
-            "south": 10.586276314343513,
-            "east": -67.05502670781448,
-            "north": 10.590691409558392
-          }
-        },
-        {
-          "url": "/local-preview/catia-la-mar/tiles/detail-coastal.webp",
-          "bounds": {
-            "west": -67.01363748,
-            "south": 10.607240620000004,
-            "east": -67.0090381,
-            "north": 10.611761369999991
-          }
-        }
-      ]
-    }
-  ],
-  "kind": "generated-preview",
-  "timestampMeaning": "local build time",
-  "routingImpact": "none"
+  }
 }

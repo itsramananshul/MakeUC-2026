@@ -1,0 +1,51 @@
+{
+  "centralHash": "910f1606ec7ff918e4166e323465feaf28beb7cf2c82c9456b7d642db1847898",
+  "roads": [
+    {
+      "id": "field-catia-exercise-side-street",
+      "label": "Reported side-street passage",
+      "state": "open",
+      "from": {
+        "latitude": 10.599527646350918,
+        "longitude": -67.01863570194122
+      },
+      "to": {
+        "latitude": 10.598373403294746,
+        "longitude": -67.01772085765586
+      },
+      "via": [
+        {
+          "latitude": 10.598836443182943,
+          "longitude": -67.01860839315658
+        },
+        {
+          "latitude": 10.598440510568306,
+          "longitude": -67.01858791156809
+        },
+        {
+          "latitude": 10.598420378387782,
+          "longitude": -67.01817827979853
+        }
+      ]
+    },
+    {
+      "id": "field-catia-exercise-junction",
+      "label": "Reported exercise closure",
+      "state": "blocked",
+      "from": {
+        "latitude": 10.59935316802856,
+        "longitude": -67.01758431373268
+      },
+      "to": {
+        "latitude": 10.599205532447368,
+        "longitude": -67.01735218906326
+      },
+      "via": [
+        {
+          "latitude": 10.59929948237091,
+          "longitude": -67.0174614242018
+        }
+      ]
+    }
+  ]
+}

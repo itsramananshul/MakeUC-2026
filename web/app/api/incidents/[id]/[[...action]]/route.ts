@@ -1,4 +1,4 @@
-import { cincinnatiSurveySource, isCincinnatiSurvey } from "@/lib/cincinnati-survey";
+import { exerciseSurveySource, isExerciseSource } from "@/lib/exercise-survey";
 import { maxGeoTiffs } from "@/lib/imagery-limits";
 import { after } from "next/server";
 import { scanAerialRoads } from "@/lib/aerial-scan";
@@ -141,7 +141,7 @@ export async function POST(request: Request, context: Context) {
       const result = await mosaic(rasters, false);
       const incident = saveIncidentImage(id, result.bytes, {
         bounds: geographicBounds(result.bounds), timestamp: acquiredAt.toISOString(),
-        source: isCincinnatiSurvey(rasters) ? cincinnatiSurveySource : (requestedSource === cincinnatiSurveySource ? "" : requestedSource) || (files.length === 1 ? "Uploaded GeoTIFF" : `${files.length} uploaded GeoTIFFs`),
+        source: exerciseSurveySource(rasters) ?? ((!isExerciseSource(requestedSource) && requestedSource) || (files.length === 1 ? "Uploaded GeoTIFF" : `${files.length} uploaded GeoTIFFs`)),
       }, undefined, result.detail?.map(tile => ({ bounds: geographicBounds(tile.bounds), bytes: tile.bytes })));
       return json({ incident });
     }

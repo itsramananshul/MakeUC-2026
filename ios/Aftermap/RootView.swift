@@ -38,6 +38,13 @@ struct RootView: View {
                     navigationBanner
                 } else if let mode = store.selectionMode {
                     selectionBanner(mode)
+                } else if let catalog = store.aerialCatalog, store.mapStyle == .satellite {
+                    Text(catalog.imagery.source)
+                        .font(.caption.weight(.medium))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(.regularMaterial, in: Capsule())
+                        .accessibilityIdentifier("catalog.imagerySource")
                 } else if case let .stale(message) = store.connection {
                     staleBanner(message)
                 }
@@ -128,7 +135,9 @@ struct RootView: View {
     }
 
     private var searchPanel: some View {
-        VStack(spacing: 0) {
+        let showsRecents = searchFocused && store.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let results = showsRecents ? store.recentPlaces : store.places
+        return VStack(spacing: 0) {
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
@@ -176,10 +185,17 @@ struct RootView: View {
                     .accessibilityIdentifier("place.searchMessage")
             }
 
-            if !store.places.isEmpty {
+            if !results.isEmpty {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(store.places.prefix(6))) { place in
+                        if showsRecents {
+                            Text("Recent searches")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 14)
+                        }
+                        ForEach(Array(results.prefix(6))) { place in
                             Button {
                                 store.choosePlace(place)
                                 searchFocused = false
@@ -189,7 +205,7 @@ struct RootView: View {
                                 }
                             } label: {
                                 HStack(spacing: 12) {
-                                    Image(systemName: "mappin.circle.fill")
+                                    Image(systemName: showsRecents ? "clock" : "mappin.circle.fill")
                                         .font(.title3)
                                         .foregroundStyle(AftermapTheme.cyan)
                                     VStack(alignment: .leading, spacing: 2) {
@@ -204,7 +220,7 @@ struct RootView: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("place.result.\(place.id)")
-                            if place.id != store.places.prefix(6).last?.id { Divider().padding(.leading, 50) }
+                            if place.id != results.prefix(6).last?.id { Divider().padding(.leading, 50) }
                         }
                     }
                 }
@@ -673,6 +689,23 @@ struct RootView: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("place.more")
             }
+            if WorldMapStore.aerialCatalogID(for: place) != nil {
+                Button {
+                    Task {
+                        if await store.toggleAerialCatalog(for: place) {
+                            dashboardDetent = Self.compactDashboardDetent
+                        }
+                    }
+                } label: {
+                    Label(
+                        store.aerialCatalog == nil ? "View aerial imagery" : "Hide aerial imagery",
+                        systemImage: "photo.on.rectangle"
+                    )
+                }
+                .buttonStyle(.bordered)
+                .disabled(store.isLoadingAerialCatalog)
+                .accessibilityIdentifier("place.aerialImagery")
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -1140,7 +1173,11 @@ private struct RouteEndpointSearchSheet: View {
                     }
                     .accessibilityIdentifier("route.endpoint.chooseOnMap")
 
-                    ForEach(results) { place in
+                    let showsRecents = query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    if showsRecents && !store.recentPlaces.isEmpty {
+                        Text("Recent searches").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    }
+                    ForEach(showsRecents ? store.recentPlaces : results) { place in
                         Button { choose(place) } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: "mappin.circle.fill")
@@ -1725,8 +1762,8 @@ private struct IncidentSheet: View {
 private enum IncidentSurveyFileLoader {
     static func load(_ urls: [URL]) async throws -> [IncidentSurveyFile] {
         try await Task.detached(priority: .userInitiated) {
-            guard !urls.isEmpty, urls.count <= 8 else {
-                throw AftermapAPIError.backend("Choose one to eight georeferenced TIFF files.")
+            guard !urls.isEmpty, urls.count <= 100 else {
+                throw AftermapAPIError.backend("Choose 1 to 100 georeferenced TIFF files.")
             }
             var total = 0
             var files: [IncidentSurveyFile] = []

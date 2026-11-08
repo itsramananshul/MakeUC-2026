@@ -54,11 +54,14 @@ final class WorldMapStore: ObservableObject {
     @Published var serverURL: String
     @Published private(set) var incidents: [Incident] = []
     @Published private(set) var recoveryImagery: [IncidentImagery] = []
+    @Published private(set) var aerialCatalog: AerialImageryCatalog?
+    @Published private(set) var isLoadingAerialCatalog = false
     @Published private(set) var selectedIncident: Incident?
     @Published private(set) var incidentDetail: IncidentDetail?
     @Published var selectedRoad: IncidentRoad?
     @Published var query = ""
     @Published private(set) var places: [PlaceResult] = []
+    @Published private(set) var recentPlaces: [PlaceResult] = []
     @Published private(set) var selectedPlace: PlaceResult?
     @Published private(set) var originPlace: PlaceResult?
     @Published private(set) var originUsesCurrentLocation = false
@@ -138,6 +141,10 @@ final class WorldMapStore: ObservableObject {
         mapStyle = MapStyle(rawValue: defaults.string(forKey: "aftermap.mapStyle") ?? "") ?? .satellite
         serverURL = Self.resolvedServerURL(defaults: defaults)
         displayName = defaults.string(forKey: "aftermap.displayName") ?? ""
+        if let data = defaults.data(forKey: "aftermap.recentPlaces"),
+           let saved = try? JSONDecoder().decode([PlaceResult].self, from: data) {
+            recentPlaces = Array(saved.prefix(12))
+        }
 #if DEBUG
         if let testServerURL = ProcessInfo.processInfo.environment["AFTERMAP_TEST_SERVER_URL"],
            !testServerURL.isEmpty {
@@ -411,7 +418,16 @@ final class WorldMapStore: ObservableObject {
         error.localizedDescription.localizedCaseInsensitiveContains("wait briefly before searching again")
     }
 
+    private func rememberPlace(_ place: PlaceResult) {
+        recentPlaces = Array(([place] + recentPlaces.filter { $0.id != place.id }).prefix(12))
+        if let data = try? JSONEncoder().encode(recentPlaces) {
+            defaults.set(data, forKey: "aftermap.recentPlaces")
+        }
+    }
+
     func choosePlace(_ place: PlaceResult) {
+        rememberPlace(place)
+        if aerialCatalog?.place.id != place.id { aerialCatalog = nil }
         searchRevision += 1
         selectedPlace = place
         query = place.name
@@ -423,7 +439,10 @@ final class WorldMapStore: ObservableObject {
 
     func queryDidChange() {
         let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if selectedPlace?.name != term { selectedPlace = nil }
+        if selectedPlace?.name != term {
+            selectedPlace = nil
+            aerialCatalog = nil
+        }
     }
 
     func clearSearch() {
@@ -431,8 +450,37 @@ final class WorldMapStore: ObservableObject {
         query = ""
         places = []
         selectedPlace = nil
+        aerialCatalog = nil
         isSearching = false
         searchMessage = nil
+    }
+
+    static func aerialCatalogID(for place: PlaceResult) -> String? {
+        place.id == "canonical-ve-catia-la-mar" ? "catia-la-mar" : nil
+    }
+
+    func toggleAerialCatalog(for place: PlaceResult) async -> Bool {
+        guard let id = Self.aerialCatalogID(for: place), !isLoadingAerialCatalog else { return false }
+        if aerialCatalog?.id == id {
+            aerialCatalog = nil
+            return false
+        }
+        isLoadingAerialCatalog = true
+        defer { isLoadingAerialCatalog = false }
+        do {
+            let catalog = try await client.aerialImageryCatalog(id: id)
+            guard selectedPlace?.id == place.id else { return false }
+            guard catalog.id == id, catalog.place == place else {
+                throw AftermapAPIError.invalidResponse
+            }
+            mapStyle = .satellite
+            aerialCatalog = catalog
+            focus(on: IncidentCoordinate(catalog.coverage.center), zoom: 14)
+            return true
+        } catch {
+            notice = error.localizedDescription
+            return false
+        }
     }
 
     func useSelectedPlaceAsDestination() {
@@ -446,6 +494,7 @@ final class WorldMapStore: ObservableObject {
     }
 
     func setOrigin(place: PlaceResult) {
+        rememberPlace(place)
         stopNavigation(announce: false)
         origin = place.coordinate
         originPlace = place
@@ -457,6 +506,7 @@ final class WorldMapStore: ObservableObject {
     }
 
     func setDestination(place: PlaceResult) {
+        rememberPlace(place)
         stopNavigation(announce: false)
         destination = place.coordinate
         destinationPlace = place
@@ -1161,8 +1211,8 @@ final class WorldMapStore: ObservableObject {
             notice = "Enter the incident access key in Settings first."
             return false
         }
-        guard !files.isEmpty, files.count <= 8 else {
-            notice = "Choose one to eight georeferenced TIFF files."
+        guard !files.isEmpty, files.count <= 100 else {
+            notice = "Choose 1 to 100 georeferenced TIFF files."
             return false
         }
         guard files.reduce(0, { $0 + $1.data.count }) <= 72 * 1024 * 1024 else {

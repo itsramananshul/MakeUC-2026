@@ -1,3 +1,4 @@
+import catia from "./catia-imagery.json";
 import { boundsTuple, distanceMeters, within, type Coordinate, type GeographicBounds,
   type IncidentRoute, type IncidentSummary, type Place, type Road, type RouteOption, type TravelMode } from "./incident-types";
 import { crossesIncident } from "./route-boundaries";
@@ -61,17 +62,10 @@ export async function loadRoads(bounds: GeographicBounds): Promise<Road[]> {
 type SearchResult = { at: number; places: Place[] };
 const searchCache = new Map<string, SearchResult>();
 let lastSearch = 0;
-const catiaLaMar: Place = {
-  id: "canonical-ve-catia-la-mar",
-  name: "Catia La Mar",
-  detail: "Vargas, Venezuela",
-  latitude: 10.5992669,
-  longitude: -67.0145106,
-};
 function canonicalPlace(query: string) {
   const key = query.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase()
     .replace(/[^a-z0-9]+/g, " ").trim();
-  return key === "catia la mar" || key === "catia la mar venezuela" ? catiaLaMar : null;
+  return key === "catia la mar" || key === "catia la mar venezuela" ? catia.place : null;
 }
 export async function searchPlaces(query: string, near?: Coordinate, exactOnly = false): Promise<Place[]> {
   const canonical = canonicalPlace(query);

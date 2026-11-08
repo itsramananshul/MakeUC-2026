@@ -90,6 +90,13 @@ struct IncidentImagery: Codable, Equatable {
     var detailTiles: [IncidentImageryDetailTile]? = nil
 }
 
+struct AerialImageryCatalog: Codable, Equatable {
+    var id: String
+    var place: PlaceResult
+    var coverage: IncidentBounds
+    var imagery: IncidentImagery
+}
+
 struct Incident: Codable, Identifiable, Equatable {
     enum Kind: String, Codable { case incident }
     var id: String

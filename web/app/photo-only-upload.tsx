@@ -80,7 +80,7 @@ export default function PhotoOnlyUpload({ onImport }: { onImport: (incident: Inc
     event.preventDefault();
     setBusy(true); setError(""); setStatus("Checking image locations…");
     try {
-      if (files.length > 100) throw new Error("Choose up to 100 prepared images at a time.");
+      if (files.length > maxGeoTiffs) throw new Error("Choose up to 100 prepared images at a time.");
       const { matched, tiles } = await identifyFiles(files);
       if (matched === files.length) {
         window.location.assign(`${city}?tiles=${encodeURIComponent(tiles.join(","))}`);

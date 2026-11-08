@@ -1,4 +1,4 @@
-import { cincinnatiSurveySource, isCincinnatiSurvey } from "@/lib/cincinnati-survey";
+import { exerciseSurveySource } from "@/lib/exercise-survey";
 import { maxGeoTiffs } from "@/lib/imagery-limits";
 import exif from "exif-reader";
 import sharp from "sharp";
@@ -60,18 +60,17 @@ export async function POST(request: Request, context: Context) {
       throw new RequestError("The image upload could not be read.", 400);
     });
     const files = form.getAll("files").filter((value): value is File => value instanceof File && value.size > 0);
-    if (!files.length || files.length > 40) throw new RequestError("Choose one to 40 aerial images.");
+    if (!files.length || files.length > maxGeoTiffs) throw new RequestError(`Choose 1 to ${maxGeoTiffs} aerial images.`);
     if (files.reduce((total, file) => total + file.size, 0) > imageryLimit) {
       throw new RequestError("Choose up to 72 MB of imagery.", 413);
     }
     if (files.every(file => /\.tiff?$/i.test(file.name))) {
-      if (files.length > maxGeoTiffs) throw new RequestError(`Choose up to ${maxGeoTiffs} GeoTIFFs.`);
       const rasters = await Promise.all(files.map(file => file.arrayBuffer()));
       const result = await mosaic(rasters, false);
-      return json({ status: "complete", ...publish(result.bytes, result, isCincinnatiSurvey(rasters) ? cincinnatiSurveySource : "Uploaded georeferenced aerial survey") }, 201);
+      return json({ status: "complete", ...publish(result.bytes, result, exerciseSurveySource(rasters) ?? "Uploaded georeferenced aerial survey") }, 201);
     }
-    if (files.length < 5 || !files.every(file => /\.(jpe?g|png)$/i.test(file.name))) {
-      throw new RequestError("Choose GeoTIFFs or at least five overlapping JPEG or PNG drone photos.", 422);
+    if (files.length < 5 || files.length > 40 || !files.every(file => /\.(jpe?g|png)$/i.test(file.name))) {
+      throw new RequestError("Choose GeoTIFFs or 5 to 40 overlapping JPEG or PNG drone photos.", 422);
     }
     for (const file of files) {
       if (!await hasGps(file)) {
