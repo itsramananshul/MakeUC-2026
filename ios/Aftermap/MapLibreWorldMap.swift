@@ -2,23 +2,19 @@ import MapLibre
 import SwiftUI
 import UIKit
 
-private final class MapLibreBundleToken {}
-
 struct MapLibreWorldMap: UIViewRepresentable {
     @ObservedObject var store: WorldMapStore
     @Environment(\.colorScheme) private var colorScheme
 
     static let lightStyleURL = URL(string: "https://tiles.openfreemap.org/styles/liberty")!
     static let darkStyleURL = URL(string: "https://tiles.openfreemap.org/styles/fiord")!
-    static let satelliteStyleURL = Bundle(for: MapLibreBundleToken.self)
-        .url(forResource: "SatelliteStyle", withExtension: "json")!
 
     static func styleURL(for colorScheme: ColorScheme) -> URL {
         colorScheme == .dark ? darkStyleURL : lightStyleURL
     }
 
     static func styleURL(for mapStyle: WorldMapStore.MapStyle, colorScheme: ColorScheme) -> URL {
-        mapStyle == .satellite ? satelliteStyleURL : styleURL(for: colorScheme)
+        styleURL(for: colorScheme)
     }
 
     private var baseStyleURL: URL { Self.styleURL(for: store.mapStyle, colorScheme: colorScheme) }
@@ -132,6 +128,7 @@ struct MapLibreWorldMap: UIViewRepresentable {
             guard signature != renderedSignature else { return }
             renderedSignature = signature
             removeAftermapContent(from: style)
+            configureBaseMap(in: style)
             addImagery(to: style)
             addIncidents(to: style)
             addRoads(to: style)
@@ -155,7 +152,36 @@ struct MapLibreWorldMap: UIViewRepresentable {
             case let .route(response, affected):
                 route = "\(response.status.rawValue):\(response.coordinates.count):\(response.distanceMeters):\(affected ?? "-")"
             }
-            return [incidentVersions, detail, selectedRoad, origin, destination, reportLocation, route].joined(separator: "#")
+            return [store.mapStyle.rawValue, incidentVersions, detail, selectedRoad, origin, destination, reportLocation, route]
+                .joined(separator: "#")
+        }
+
+        private func configureBaseMap(in style: MLNStyle) {
+            let baseLayers = style.layers.filter { !$0.identifier.hasPrefix("aftermap-") }
+            for layer in baseLayers {
+                layer.isVisible = store.mapStyle == .streets || layer is MLNSymbolStyleLayer
+            }
+
+            guard store.mapStyle == .satellite else { return }
+            let attribution = MLNAttributionInfo(
+                title: NSAttributedString(string: "Esri World Imagery"),
+                url: URL(string: "https://www.esri.com/en-us/arcgis/products/arcgis-living-atlas")!
+            )
+            let source = MLNRasterTileSource(
+                identifier: "aftermap-basemap-satellite-source",
+                tileURLTemplates: ["https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+                options: [
+                    .minimumZoomLevel: 0,
+                    .maximumZoomLevel: 23,
+                    .tileSize: 256,
+                    .attributionInfos: [attribution]
+                ]
+            )
+            style.addSource(source)
+            let layer = MLNRasterStyleLayer(identifier: "aftermap-basemap-satellite-layer", source: source)
+            layer.rasterFadeDuration = NSExpression(forConstantValue: 0.15)
+            layer.maximumZoomLevel = 24
+            style.insertLayer(layer, at: 0)
         }
 
         private func removeAftermapContent(from style: MLNStyle) {

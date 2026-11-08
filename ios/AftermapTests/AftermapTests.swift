@@ -123,7 +123,7 @@ final class AftermapTests: XCTestCase {
         XCTAssertEqual(store.mapStyle, .satellite)
         XCTAssertEqual(
             MapLibreWorldMap.styleURL(for: store.mapStyle, colorScheme: .light).lastPathComponent,
-            "SatelliteStyle.json"
+            "liberty"
         )
 
         store.mapStyle = .streets

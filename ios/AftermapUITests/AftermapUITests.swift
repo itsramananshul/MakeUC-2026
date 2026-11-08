@@ -14,7 +14,24 @@ final class AftermapUITests: XCTestCase {
         XCTAssertTrue(app.buttons["disaster.report"].exists)
         XCTAssertTrue(app.buttons["map.useCurrentLocation"].exists)
         XCTAssertTrue(app.buttons["map.style"].exists)
+        XCTAssertTrue(app.buttons["dashboard.handle"].exists)
         XCTAssertFalse(app.buttons["join.submit"].exists)
+    }
+
+    func testDashboardCanCollapseAndExpand() {
+        let app = XCUIApplication()
+        app.launchEnvironment["AFTERMAP_AUTOMATIC_LOCATION"] = "0"
+        app.launch()
+
+        let handle = app.buttons["dashboard.handle"]
+        XCTAssertTrue(handle.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["route.origin"].exists)
+
+        handle.tap()
+        XCTAssertFalse(app.buttons["route.origin"].waitForExistence(timeout: 1))
+
+        handle.tap()
+        XCTAssertTrue(app.buttons["route.origin"].waitForExistence(timeout: 3))
     }
 
     func testSimulatorCanChooseRouteEndpointsOnMap() {

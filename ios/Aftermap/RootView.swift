@@ -8,6 +8,7 @@ struct RootView: View {
     @State private var showingReport = false
     @State private var showingDisasterHub = false
     @State private var requestedInitialLocation = false
+    @State private var dashboardExpanded = true
 
     var body: some View {
         ZStack {
@@ -30,14 +31,14 @@ struct RootView: View {
                 Spacer()
                 HStack {
                     if store.mapStyle == .satellite {
-                        Link(destination: URL(string: "https://cloudless.eox.at")!) {
-                            Text("EOxCloudless · Copernicus 2016–17")
+                        Link(destination: URL(string: "https://www.esri.com/en-us/arcgis/products/arcgis-living-atlas")!) {
+                            Text("Esri World Imagery")
                                 .font(.caption2.weight(.medium))
                         }
                         .padding(.horizontal, 9)
                         .padding(.vertical, 6)
                         .background(.regularMaterial, in: Capsule())
-                        .accessibilityLabel("Satellite imagery by EOxCloudless, containing modified Copernicus Sentinel data from 2016 and 2017")
+                        .accessibilityLabel("Satellite imagery by Esri World Imagery")
                     }
                     Spacer()
                     VStack(spacing: 8) {
@@ -197,10 +198,26 @@ struct RootView: View {
             Capsule()
                 .fill(Color.secondary.opacity(0.35))
                 .frame(width: 38, height: 5)
+                .frame(maxWidth: .infinity, minHeight: 20)
+                .contentShape(Rectangle())
+                .onTapGesture { setDashboardExpanded(!dashboardExpanded) }
+                .gesture(
+                    DragGesture(minimumDistance: 8)
+                        .onEnded { value in
+                            if value.translation.height > 35 {
+                                setDashboardExpanded(false)
+                            } else if value.translation.height < -35 {
+                                setDashboardExpanded(true)
+                            }
+                        }
+                )
+                .accessibilityLabel(dashboardExpanded ? "Collapse map dashboard" : "Expand map dashboard")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier("dashboard.handle")
 
             searchPanel
 
-            if store.places.isEmpty {
+            if dashboardExpanded && store.places.isEmpty {
                 HStack {
                     Text("Report & Navigate")
                         .font(.title3.weight(.bold))
@@ -257,7 +274,13 @@ struct RootView: View {
                 .stroke(Color.primary.opacity(0.08))
         }
         .shadow(color: .black.opacity(0.18), radius: 18, y: -3)
-        .ignoresSafeArea(edges: .bottom)
+        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: dashboardExpanded)
+    }
+
+    private func setDashboardExpanded(_ expanded: Bool) {
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+            dashboardExpanded = expanded
+        }
     }
 
     private func quickAction(
