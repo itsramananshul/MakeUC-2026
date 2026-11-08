@@ -194,7 +194,10 @@ struct RootView: View {
                         }
                     }
                 }
-                .frame(maxHeight: dashboardDetent == .large ? 520 : 220)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .layoutPriority(1)
+                .scrollDismissesKeyboard(.interactively)
+                .safeAreaPadding(.bottom, 12)
                 .padding(.top, 8)
             }
         }
@@ -394,6 +397,11 @@ struct RootView: View {
                 .accessibilityIdentifier("dashboard.handle")
 
             searchPanel
+                .frame(
+                    maxHeight: searchFocused && !store.places.isEmpty ? .infinity : nil,
+                    alignment: .top
+                )
+                .layoutPriority(searchFocused && !store.places.isEmpty ? 1 : 0)
 
             if dashboardDetent != Self.compactDashboardDetent {
                 if showingDirections {
