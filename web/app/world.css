@@ -79,7 +79,7 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
 .world-attribution { display: block; margin: 6px 0; }
 .direction-field { margin-top: 8px; }
 .direction-field > label { display: block; margin: 0 0 4px 2px; font-size: 12px; font-weight: 650; }
-.direction-field .direction-input { margin: 0; }
+.direction-field .direction-input { margin: 0; grid-template-columns: auto minmax(0, 1fr) auto auto; }
 .direction-input i { width: 8px; height: 8px; flex: none; border-radius: 50%; background: #1574e6; }
 .direction-field.destination .direction-input i { background: #dc4251; }
 .direction-field .world-result { min-height: 44px; }
@@ -204,6 +204,7 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
   .world-stage { min-height: 46dvh; }
   .world-app:not(.with-world-sidebar) .world-stage { min-height: 100dvh; }
   .world-search input { font-size: 16px; }
+  .direction-field .direction-input { height: 48px; gap: 4px; }
   .direction-input button { width: 44px; min-height: 44px; }
   .direction-modes.world-segments button, .direction-options button, .direction-steps summary { min-height: 44px; }
   .world-action-row button, .incident-form .world-primary, .world-nav { min-height: 44px; }
