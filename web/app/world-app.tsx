@@ -1,20 +1,23 @@
 "use client";
 
 import {
-  ArrowDownUp, ArrowLeft, ArrowRight, Bike, CarFront, ChevronRight, Crosshair, Footprints, Globe, KeyRound, Layers3,
-  MapPin, PanelLeft, Plus, Route, Satellite, Search, ShieldAlert, X,
+  ArrowDownUp, ArrowLeft, ArrowUp, Bike, BusFront, CarFront, ChevronRight, CornerUpLeft, CornerUpRight,
+  Crosshair, Flag, Footprints, Globe, Info, KeyRound, Layers3, MapPin, PanelLeft, Plus, Route, Satellite, Search, ShieldAlert, X,
 } from "lucide-react";
 import Image from "next/image";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { distanceMeters, within, type Coordinate, type GeographicBounds, type Incident, type IncidentRoute, type IncidentSummary, type Place, type TravelMode } from "@/lib/incident-types";
+import { crossesIncident } from "@/lib/route-boundaries";
 import { fetchJson, incidentPath, postJson } from "@/lib/world-client";
 import { AccessKey, CreateIncident, Modal, ReportIncident, SurveyUpload } from "./incident-dialogs";
-import DirectionsField, { type TripPoint } from "./directions-field";
+import PlaceFinder from "./place-finder";
 import WorldMap from "./world-map";
 
 type Focus = { point: Coordinate; zoom?: number } | { bounds: GeographicBounds };
 type Picking = "start" | "destination" | "point" | "connection" | null;
 type ModalKind = "create" | "access" | "report" | "survey" | null;
+type Stop = "start" | "destination";
+type TripPoint = Coordinate & { label: string; detail?: string };
 const labels = { unknown: "Unverified", open: "Reported open", blocked: "Blocked", hazard: "Hazard", conflict: "Disputed" };
 const earth = { latitude: 24, longitude: 0 };
 const accessStorage = (id: string) => `aftermap.access.${id}`;
@@ -22,7 +25,7 @@ const getMessage = (error: unknown) => error instanceof Error ? error.message : 
 const travelModes = [
   { mode: "driving", label: "Drive", icon: CarFront },
   { mode: "walking", label: "Walk", icon: Footprints },
-  { mode: "cycling", label: "Cycle", icon: Bike },
+  { mode: "cycling", label: "Bike", icon: Bike },
 ] as const;
 const formatDistance = (meters: number) => meters >= 1000
   ? `${(meters / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })} km`
@@ -45,11 +48,10 @@ export default function WorldApp() {
   const [selected, setSelected] = useState("");
   const [focus, setFocus] = useState<Focus | null>(null);
   const [camera, setCamera] = useState({ center: earth, zoom: 1.65 });
-  const [query, setQuery] = useState("");
-  const [places, setPlaces] = useState<Place[]>([]);
   const [place, setPlace] = useState<Place | null>(null);
-  const [searching, setSearching] = useState(false);
   const [tripOpen, setTripOpen] = useState(false);
+  const [incidentPanel, setIncidentPanel] = useState(false);
+  const [showSteps, setShowSteps] = useState(false);
   const [start, setStart] = useState<TripPoint | null>(null);
   const [deviceOrigin, setDeviceOrigin] = useState<TripPoint | null>(null);
   const [locatingStart, setLocatingStart] = useState(false);
@@ -70,12 +72,26 @@ export default function WorldApp() {
   const [access, setAccess] = useState("");
   const [importing, setImporting] = useState(false);
   const [sidebar, setSidebar] = useState(true);
+  const [sheet, setSheet] = useState(1);
+  const sheetDrag = useRef<{ startY: number; height: number; moved: boolean } | null>(null);
+  const lastWheel = useRef(0);
   const [stale, setStale] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const selectedRoad = active?.roads.find(road => road.id === roadId) ?? null;
-  const routeOption = route?.options?.[routeIndex];
-  const visibleRoute = route && routeOption ? { ...route, ...routeOption } : route;
+  const checkedRoute = useMemo(() => {
+    if (!route || !route.coordinates.length) return route;
+    const options = route.options?.filter(option => !crossesIncident(option.coordinates, incidents));
+    if (options?.length) return { ...route, options };
+    if (options || crossesIncident(route.coordinates, incidents, route.incidentId)) {
+      return { status: "unavailable", coordinates: [], distanceMeters: 0,
+        reason: "The route enters an affected area. Open the incident to review its reported passages." } satisfies IncidentRoute;
+    }
+    return route;
+  }, [route, incidents]);
+  const selectedOption = checkedRoute?.options?.[routeIndex] ? routeIndex : 0;
+  const routeOption = checkedRoute?.options?.[selectedOption];
+  const visibleRoute = checkedRoute && routeOption ? { ...checkedRoute, ...routeOption } : checkedRoute;
   const reports = active?.reports ?? [];
   const shownReports = reports.slice(0, 40);
   const pinnedReport = reports.find(report => report.id === focusedReport);
@@ -126,8 +142,8 @@ export default function WorldApp() {
   function chooseIncident(id: string) {
     if (id === selected) { if (active) setFocus({ bounds: active.bounds }); return; }
     setActive(null); setSelected(id); setRoadId(null); setFocusedReport(""); setRoadQuery(""); setPoints([]); setStale(false); setError("");
-    resetRoute(); setTripOpen(false); setPicking(null); setStart(null); setDestination(null);
-    setPlace(null); setPlaces([]); setSidebar(true);
+    resetRoute(); setTripOpen(false); setIncidentPanel(!!id); setPicking(null); setStart(null); setDestination(null);
+    setPlace(null); setSidebar(true); setSheet(1);
     const url = new URL(location.href);
     if (id) url.searchParams.set("incident", id); else url.searchParams.delete("incident");
     history.replaceState(null, "", url);
@@ -142,23 +158,12 @@ export default function WorldApp() {
     setMessage("Incident created. Share its access key with your field team.");
   }
 
-  async function search(event: FormEvent) {
-    event.preventDefault();
-    if (query.trim().length < 2) return;
-    setSearching(true); setPlaces([]); setPlace(null); setError("");
-    try {
-      const result = await fetchJson<{ places: Place[] }>(`/api/places?q=${encodeURIComponent(query.trim())}`);
-      setPlaces(result.places);
-      if (!result.places.length) setMessage("No places matched that search.");
-    } catch (error) { setError(getMessage(error)); }
-    finally { setSearching(false); }
-  }
   function choosePlace(item: Place) {
-    setPlace(item); setPlaces([]); setMessage("");
-    setFocus({ point: item, zoom: 15 });
+    setPlace(item); setTripOpen(false); setIncidentPanel(false); setPicking(null); resetRoute(); setMessage("");
+    setFocus({ point: item, zoom: 15 }); setSheet(1);
   }
-  function resetRoute() { setRoute(null); setRouteIndex(0); setRouteError(""); setRouting(false); }
-  function setTripPoint(side: "start" | "destination", point: TripPoint | null) {
+  function resetRoute() { setRoute(null); setRouteIndex(0); setRouteError(""); setRouting(false); setShowSteps(false); }
+  function setTripPoint(side: Stop, point: TripPoint | null) {
     resetRoute();
     setPicking(null);
     if (side === "start") setStart(point); else setDestination(point);
@@ -230,15 +235,16 @@ export default function WorldApp() {
   }
   function startTrip(point?: Place) {
     if (!tripOpen) setMode(active ? "walking" : "driving");
-    setTripOpen(true); resetRoute(); setPlaces([]);
+    setTripOpen(true); setIncidentPanel(false); setShowSteps(false); setSheet(1);
+    if (!tripOpen || point) resetRoute();
     if (!start && deviceOrigin) setStart(deviceOrigin);
     if (point) setDestination({ ...point, label: point.name });
   }
   function selectRoad(id: string) {
-    setRoadId(id); setPoints([]); setSidebar(true);
+    setRoadId(id); setPoints([]); setSidebar(true); setIncidentPanel(true);
   }
   function selectReport(id: string) {
-    setSidebar(true);
+    setSidebar(true); setIncidentPanel(true);
     setFocusedReport(id);
     requestAnimationFrame(() => {
       const card = document.getElementById(`report-${id}`);
@@ -248,88 +254,190 @@ export default function WorldApp() {
   }
   const pickLabel = picking === "start" ? "Choose a starting point" : picking === "destination" ? "Choose a destination" :
     picking === "point" ? "Choose a report location" : points.length ? "Choose the end of the passage" : "Choose the start of the passage";
+  const directionsVisible = tripOpen && !incidentPanel;
+  function openSearch() {
+    setTripOpen(false); setIncidentPanel(false); setPicking(null); resetRoute();
+    requestAnimationFrame(() => document.querySelector<HTMLInputElement>(".world-scroll [name=place]")?.focus());
+  }
+  function shiftSheet(direction: number) {
+    setSheet(value => Math.max(0, Math.min(2, value + direction)));
+  }
+  function dragSheet(event: PointerEvent<HTMLButtonElement>) {
+    const drag = sheetDrag.current;
+    if (!drag) return;
+    const delta = drag.startY - event.clientY;
+    if (!drag.moved && Math.abs(delta) < 7) return;
+    drag.moved = true;
+    const height = Math.max(113, Math.min((window.visualViewport?.height ?? innerHeight) * .81, drag.height + delta));
+    event.currentTarget.closest<HTMLElement>(".world-sidebar")?.style.setProperty("--drag-sheet-height", `${height}px`);
+  }
+  function releaseSheet(event: PointerEvent<HTMLButtonElement>) {
+    const drag = sheetDrag.current;
+    if (drag?.moved && event.type !== "pointercancel") {
+      const delta = drag.startY - event.clientY;
+      if (Math.abs(delta) >= 24) shiftSheet(Math.sign(delta));
+    }
+    event.currentTarget.closest<HTMLElement>(".world-sidebar")?.style.removeProperty("--drag-sheet-height");
+  }
 
   return <main className={`world-app ${sidebar ? "with-world-sidebar" : ""}`}>
     <a className="world-skip" href="#map-view">Skip to map</a>
-    {sidebar && <aside className="world-sidebar" aria-label="Map controls">
-      <header className="world-brand">
-        <button className="wordmark" type="button" onClick={() => { chooseIncident(""); setFocus({ point: earth, zoom: 1.65 }); }}>
-          <Image src="/icon.png" alt="" width={28} height={28} unoptimized />Gaslight Maps
+    {sidebar && <aside className="world-sidebar" data-sheet={picking ? 0 : sheet} aria-label="Map controls">
+      <nav className="world-rail" aria-label="Map views">
+        <header>
+          <button className="rail-wordmark" type="button" onClick={openSearch}>
+            <Image src="/icon.png" alt="" width={23} height={23} unoptimized />Gaslight Maps
+          </button>
+          <button className="circle-button" aria-label="Hide sidebar" onClick={() => setSidebar(false)}><PanelLeft size={16} /></button>
+        </header>
+        <button className="rail-item" type="button" aria-current={!directionsVisible && !incidentPanel ? "page" : undefined} onClick={openSearch}>
+          <span><Search size={17} /></span>Search
         </button>
-        <button className="circle-button" aria-label="Hide sidebar" onClick={() => setSidebar(false)}><PanelLeft size={17} /></button>
-      </header>
-      <div className="world-scroll">
-        <form className="world-search" onSubmit={search}>
-          <Search size={18} aria-hidden />
-          <input aria-label="Search places" placeholder="Search a place or address…" value={query} maxLength={120} onChange={event => setQuery(event.target.value)} />
-          <button type="submit" aria-label="Search" disabled={searching || query.trim().length < 2}>{searching ? "…" : <ArrowRight size={17} />}</button>
-        </form>
-        {!!places.length && <div className="world-results" aria-label="Search results">
-          {places.map(item => <button key={item.id} type="button" className="world-result" onClick={() => choosePlace(item)}>
-            <MapPin size={16} /><span><strong>{item.name}</strong><small>{item.detail}</small></span><ChevronRight size={14} />
-          </button>)}
-          <small className="world-attribution">Search by <a href="https://github.com/komoot/photon" target="_blank" rel="noreferrer">Photon</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a></small>
-        </div>}
-        {place && <div className="world-place">
-          <div><MapPin size={19} /><div><strong>{place.name}</strong><small>{place.detail}</small></div>
-            <button type="button" className="circle-button" aria-label="Clear place" onClick={() => setPlace(null)}><X size={15} /></button></div>
-          <div className="world-action-row">
-            <button className="world-secondary" type="button" onClick={() => startTrip(place)}><Route size={15} /> Directions here</button>
-            {!active && <button className="world-secondary" type="button" onClick={() => { setPicking(null); setModal("create"); }}><Plus size={15} /> Report here</button>}
+        <button className="rail-item" type="button" aria-current={directionsVisible ? "page" : undefined} onClick={() => startTrip()}>
+          <span><Route size={17} /></span>Directions
+        </button>
+        <button className="rail-item" type="button" aria-current={incidentPanel ? "page" : undefined} onClick={() => {
+          setIncidentPanel(true); setPicking(null);
+        }}><span><ShieldAlert size={17} /></span>Incidents</button>
+        <footer><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a></footer>
+      </nav>
+      <div className="world-tray">
+        <button className="mobile-sheet-handle" type="button" aria-label="Resize map panel"
+          onPointerDown={event => {
+            const height = event.currentTarget.closest(".world-sidebar")?.getBoundingClientRect().height;
+            if (!height) return;
+            sheetDrag.current = { startY: event.clientY, height, moved: false };
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={dragSheet} onPointerUp={releaseSheet} onPointerCancel={releaseSheet}
+          onClick={() => {
+            if (!sheetDrag.current?.moved) setSheet(value => value === 2 ? 0 : value + 1);
+            sheetDrag.current = null;
+          }}
+          onKeyDown={event => {
+            if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+            event.preventDefault(); shiftSheet(event.key === "ArrowUp" ? 1 : -1);
+          }}
+          onWheel={event => {
+            if (Math.abs(event.deltaY) > 16 && Date.now() - lastWheel.current > 260) {
+              lastWheel.current = Date.now(); shiftSheet(Math.sign(event.deltaY));
+            }
+          }}><span /></button>
+        <header className="world-brand">
+          <button className="wordmark" type="button" onClick={() => { chooseIncident(""); setFocus({ point: earth, zoom: 1.65 }); }}>
+            <Image src="/icon.png" alt="" width={28} height={28} unoptimized />Gaslight Maps
+          </button>
+          <div className="mobile-brand-actions">
+            {incidentPanel && <button className="circle-button" aria-label="Search" onClick={openSearch}><Search size={17} /></button>}
+            <button className="circle-button" aria-label="Hide sidebar" onClick={() => setSidebar(false)}><PanelLeft size={17} /></button>
           </div>
-        </div>}
+        </header>
+        <div className="world-scroll">
+        <div className="search-pane" hidden={directionsVisible || incidentPanel}>
+          <h2 className="tray-heading">Search</h2>
+          <PlaceFinder label="Search places" onFocus={() => setSheet(2)} onSelect={choosePlace} />
+          {place && <div className="world-place">
+            <div><MapPin size={19} /><div><strong>{place.name}</strong><small>{place.detail}</small></div>
+              <button type="button" className="circle-button" aria-label="Clear place" onClick={() => setPlace(null)}><X size={15} /></button></div>
+            <div className="world-action-row">
+              <button className="world-primary" type="button" onClick={() => startTrip(place)}><Route size={15} /> Directions</button>
+              {!active && <button className="world-secondary" type="button" onClick={() => { setPicking(null); setModal("create"); }}><Plus size={15} /> Report here</button>}
+            </div>
+          </div>}
+          <button type="button" className="world-nav mobile-directions" onClick={() => startTrip()}><span><Route size={17} /></span> Directions <ChevronRight size={15} /></button>
+        </div>
 
-        {tripOpen ? <section className="world-section trip">
-          <header><h2><Route size={16} /> Directions</h2>
-            <button className="circle-button" aria-label="Close directions" onClick={() => { setTripOpen(false); setPicking(null); resetRoute(); }}><X size={15} /></button></header>
-          <div className="world-segments direction-modes" role="group" aria-label="Travel mode">
+        {directionsVisible && (showSteps && routeOption ? <section className="route-detail-pane">
+          <header className="tray-header">
+            <button className="circle-button" type="button" aria-label="Back to directions" onClick={() => {
+              setShowSteps(false); setSheet(1);
+            }}><ArrowLeft size={19} /></button>
+            <h2 className="tray-heading">Route Details</h2>
+          </header>
+          <p className="route-detail-label">Steps</p>
+          <ol className="route-maneuvers">
+            <li><span className="maneuver-pin start"><MapPin size={16} /></span><span><strong>{start?.label}</strong>{start?.detail && <small>{start.detail}</small>}</span></li>
+            {routeOption.steps.map((step, index) => {
+              const Icon = /^Arrive/.test(step.instruction) ? Flag :
+                /^(Turn|Keep|Continue|Merge) (slight |sharp )?left/.test(step.instruction) ? CornerUpLeft :
+                /^(Turn|Keep|Continue|Merge) (slight |sharp )?right/.test(step.instruction) ? CornerUpRight : ArrowUp;
+              return <li key={index}><Icon size={22} aria-hidden /><span>
+                {step.distanceMeters > 0 ? <><strong>{formatDistance(step.distanceMeters)}</strong><small>{step.instruction}</small></> :
+                  <strong>{step.instruction}</strong>}
+              </span></li>;
+            })}
+            <li><span className="maneuver-pin destination"><MapPin size={16} /></span><span><strong>{destination?.label}</strong>
+              {destination?.detail && <small>{destination.detail}</small>}</span></li>
+          </ol>
+        </section> : <section className="trip">
+          <header className="tray-header"><h2 className="tray-heading">Directions</h2>
+            <button className="circle-button" aria-label="Close directions" onClick={() => {
+              setTripOpen(false); setIncidentPanel(!!active); setPicking(null); resetRoute();
+            }}><X size={18} /></button></header>
+          <div className="direction-modes" role="group" aria-label="Travel mode">
             {travelModes.map(({ mode: item, label, icon: Icon }) =>
               <button key={item} type="button" aria-pressed={mode === item} onClick={() => {
                 if (mode !== item) { resetRoute(); setMode(item); }
-              }}><Icon size={16} aria-hidden />{label}</button>)}
-          </div>
-          <DirectionsField side="start" point={start} onClear={() => { if (start) setTripPoint("start", null); }}
-            onSelect={item => setTripPoint("start", { ...item, label: item.name })} onPick={() => setPicking("start")} />
-          <DirectionsField side="destination" point={destination} onClear={() => { if (destination) setTripPoint("destination", null); }}
-            onSelect={item => setTripPoint("destination", { ...item, label: item.name })} onPick={() => setPicking("destination")} />
-          <div className="world-action-row">
-            <button className="world-secondary" type="button" onClick={myLocation} disabled={locatingStart}>
-              <Crosshair size={16} aria-hidden /> {locatingStart ? "Locating…" : "My location"}
+              }}><Icon size={19} aria-hidden />{label}</button>)}
+            <button type="button" disabled aria-label="Transit unavailable" title="Transit routing is currently unavailable">
+              <BusFront size={19} aria-hidden />Transit
             </button>
-            <button className="world-secondary direction-swap" type="button" disabled={!start || !destination} onClick={() => {
+          </div>
+          <div className="direction-stops">
+            <PlaceFinder label="Starting point" stop="start" initialValue={start?.label}
+              autoFocus={!!destination && !start} onEdit={() => { if (start) setTripPoint("start", null); }}
+              onSelect={item => setTripPoint("start", { ...item, label: item.name })} />
+            <PlaceFinder label="Destination" stop="destination" initialValue={destination?.label}
+              onEdit={() => { if (destination) setTripPoint("destination", null); }}
+              onSelect={item => setTripPoint("destination", { ...item, label: item.name })} />
+          </div>
+          <div className="direction-utilities">
+            <button className="world-secondary" type="button" onClick={myLocation} disabled={locatingStart}>
+              <Crosshair size={15} aria-hidden /> {locatingStart ? "Locating…" : "My location"}
+            </button>
+            <button className="world-secondary" type="button" disabled={!start || !destination} onClick={() => {
               resetRoute(); setStart(destination); setDestination(start); setPicking(null);
             }}><ArrowDownUp size={15} aria-hidden /> Swap</button>
           </div>
+          {active && <details className="direction-pick-options">
+            <summary>Pick a point on the map</summary>
+            <div className="world-action-row">
+              <button className="world-secondary" type="button" onClick={() => setPicking("start")}>Pick start on map</button>
+              <button className="world-secondary" type="button" onClick={() => setPicking("destination")}>Pick destination on map</button>
+            </div>
+          </details>}
           {routing && <small role="status" className="direction-search-status">Finding routes…</small>}
           {routeError && <div className="world-route-result unavailable">
             <small role="alert">{routeError}</small>
             {start && destination && <button className="world-secondary" type="button" onClick={() => setRouteRetry(value => value + 1)}>Try again</button>}
           </div>}
-          {visibleRoute && <div className={`world-route-result ${visibleRoute.status}`}>
-            <strong role="status">{visibleRoute.status === "unavailable" ? "Route unavailable" :
-              visibleRoute.status === "partial" ? "Partial route" : routeOption ? formatDuration(routeOption.durationSeconds) : "Walking route"}
-              {visibleRoute.distanceMeters > 0 && ` · ${formatDistance(visibleRoute.distanceMeters)}`}</strong>
-            {!routeOption && <small>{visibleRoute.reason}</small>}
-            {route?.options && route.options.length > 1 && <div className="direction-options" role="group" aria-label="Route options">
-              {route.options.map((option, index) => <button className="world-secondary" type="button" key={index}
-                aria-pressed={index === routeIndex} onClick={() => {
+          {checkedRoute?.options?.length && routeOption ? <div className="direction-options" role="group" aria-label="Route options">
+            {checkedRoute.options.map((option, index) => <div className="direction-card" data-selected={index === selectedOption} key={index}>
+              <button type="button" aria-pressed={index === selectedOption} aria-label={`Route ${index + 1}, ${formatDuration(option.durationSeconds)}, ${formatDistance(option.distanceMeters)}`}
+                onClick={() => {
                   setRouteIndex(index);
                   if (start && destination) setFocus({ bounds: routeBounds([start, destination, ...option.coordinates]) });
                 }}>
-                <span>Route {index + 1}</span><span>{formatDuration(option.durationSeconds)} · {formatDistance(option.distanceMeters)}</span>
-              </button>)}
-            </div>}
-            {routeOption && <details key={routeIndex} className="direction-steps">
-              <summary>Route details</summary>
-              <ol>{routeOption.steps.map((step, index) => <li key={index}>
-                {step.instruction}{step.distanceMeters > 0 && <small>{formatDistance(step.distanceMeters)}</small>}
-              </li>)}</ol>
-            </details>}
-            {routeOption && <small><a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noreferrer">OSRM routing</a> · <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noreferrer">Fix the map</a></small>}
+                <strong>{formatDuration(option.durationSeconds)}</strong>
+                <span>{formatDistance(option.distanceMeters)}{checkedRoute.options!.length > 1 && ` · Route ${index + 1}`}</span>
+              </button>
+              <button className="direction-info" type="button" aria-label={`Route details${checkedRoute.options!.length > 1 ? ` for route ${index + 1}` : ""}`}
+                onClick={() => {
+                  setRouteIndex(index); setShowSteps(true); setSheet(2);
+                  if (start && destination) setFocus({ bounds: routeBounds([start, destination, ...option.coordinates]) });
+                }}><Info size={19} /></button>
+            </div>)}
+            <small className="world-attribution">Checked against mapped incidents · <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noreferrer">OSRM routing</a></small>
+          </div> : visibleRoute && <div className={`world-route-result ${visibleRoute.status}`}>
+            <strong role="status">{visibleRoute.status === "unavailable" ? "Route unavailable" :
+              visibleRoute.status === "partial" ? "Partial route only" : "Walking route"}
+              {visibleRoute.distanceMeters > 0 && ` · ${formatDistance(visibleRoute.distanceMeters)}`}</strong>
+            <small>{visibleRoute.reason}</small>
           </div>}
-        </section> : <button type="button" className="world-nav" onClick={() => startTrip()}><span><Route size={17} /></span> Directions <ChevronRight size={15} /></button>}
+        </section>)}
 
-        {active ? <section className="world-section active-incident">
+        {!directionsVisible && (active ? <section className="world-section active-incident">
+          {incidentPanel && <button type="button" className="world-nav mobile-directions" onClick={() => startTrip()}><span><Route size={17} /></span> Directions <ChevronRight size={15} /></button>}
           <button type="button" className="world-text" onClick={() => chooseIncident("")}><ArrowLeft size={15} /> All incidents</button>
           <h1>{active.name}</h1>
           <p className="incident-caption"><span className={stale ? "sync stale" : "sync"} />{stale ? "Showing last update" : "Live incident"} · {active.roadCount.toLocaleString()} segments</p>
@@ -379,15 +487,17 @@ export default function WorldApp() {
           {incidents.length ? <ul className="incident-list">{incidents.map(item => <li key={item.id}><button type="button" onClick={() => chooseIncident(item.id)}>
             <span><strong>{item.name}</strong><small>{item.roadCount.toLocaleString()} mapped segments{item.imagery ? " · Aerial survey" : ""}</small></span><ChevronRight size={17} />
           </button></li>)}</ul> : <p className="world-hint">Report an incident to mark the affected area and start collecting observations.</p>}
-        </section>}
+        </section>)}
 
         {error && <p className="incident-error sidebar-status" role="alert">{error}</p>}
         {message && <p className="sidebar-status" role="status">{message}</p>}
       </div>
       <footer className="world-footer"><Globe size={15} /> World map <span>·</span><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a></footer>
+      </div>
     </aside>}
     <section id="map-view" className="world-stage" aria-label="Map">
-      <WorldMap incidents={incidents} active={active} focus={focus} route={visibleRoute} start={start} destination={destination}
+      <WorldMap incidents={incidents} active={active} focus={focus} route={visibleRoute}
+        start={tripOpen ? start : null} destination={tripOpen ? destination : place}
         selectedRoad={roadId} aerial={aerial} picking={!!picking} onCamera={setCamera}
         onPoint={choosePoint} onRoad={selectRoad} onIncident={chooseIncident} onReport={selectReport} />
       {!sidebar && <button className="world-restore circle-button" aria-label="Show sidebar" onClick={() => setSidebar(true)}><PanelLeft size={18} /></button>}

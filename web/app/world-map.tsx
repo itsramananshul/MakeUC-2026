@@ -203,11 +203,13 @@ export default function WorldMap(props: Props) {
   useEffect(() => {
     const view = map.current;
     if (!view || !ready || !images.length) return;
+    const surveyBefore = view.getLayer(satelliteRoadLayer(satelliteRoads[0])) ? satelliteRoadLayer(satelliteRoads[0]) :
+      view.getLayer("waterway_line_label") ? "waterway_line_label" : "incident-boundary-fill";
     const layerIds = images.map((image, index) => {
       const id = `after-survey-${index}`;
       const [w, s, e, n] = boundsTuple(image.bounds);
       view.addSource(id, { type: "image", url: image.url, coordinates: [[w, n], [e, n], [e, s], [w, s]] });
-      view.addLayer({ id, type: "raster", source: id, paint: { "raster-fade-duration": 0 } }, "incident-boundary-fill");
+      view.addLayer({ id, type: "raster", source: id, paint: { "raster-fade-duration": 0 } }, surveyBefore);
       return id;
     });
     return () => {

@@ -1,7 +1,6 @@
-import { booleanIntersects } from "@turf/boolean-intersects";
-import { polygon, lineString } from "@turf/helpers";
-import { boundsTuple, distanceMeters, lngLat, within, type Coordinate, type GeographicBounds,
+import { boundsTuple, distanceMeters, within, type Coordinate, type GeographicBounds,
   type IncidentRoute, type IncidentSummary, type Place, type Road, type RouteOption, type TravelMode } from "./incident-types";
+import { crossesIncident } from "./route-boundaries";
 import { RequestError } from "./store";
 
 const userAgent = "AFTERMAP/1.0 (+https://aftermap-makeuc.vercel.app)";
@@ -90,11 +89,6 @@ export async function searchPlaces(query: string): Promise<Place[]> {
   } catch { throw new RequestError("Place search is temporarily unavailable.", 503); }
 }
 
-function incidentPolygon(bounds: GeographicBounds) {
-  const [w, s, e, n] = boundsTuple(bounds);
-  return polygon([[[w, s], [e, s], [e, n], [w, n], [w, s]]]);
-}
-
 let lastRoute = 0;
 const routingProfiles = {
   driving: { path: "car", origin: () => process.env.OSRM_CAR_URL },
@@ -146,17 +140,15 @@ export async function standardRoute(origin: Coordinate, destination: Coordinate,
     if (!response.ok && data.code !== "NoRoute" && data.code !== "NoSegment") throw new Error("Router failed");
     const routes = data.routes ?? [];
     if (!routes.length) return unset;
-    const safe = routes.filter(route => route.geometry.coordinates.length >= 2 &&
-      !incidents.some(incident => booleanIntersects(lineString(route.geometry.coordinates), incidentPolygon(incident.bounds))));
-    if (!safe.length) return { ...unset, reason: "Available routes pass through an incident. Choose points on its reported passage network." };
-    const options: RouteOption[] = safe.map(route => ({
+    const options: RouteOption[] = routes.map(route => ({
       distanceMeters: Math.round(route.distance), durationSeconds: Math.round(route.duration),
       coordinates: route.geometry.coordinates.map(([longitude, latitude]) => ({ latitude, longitude })),
       steps: route.legs.flatMap(leg => leg.steps.map(step => ({
         instruction: describeStep(step), distanceMeters: Math.round(step.distance),
       }))),
-    }));
+    })).filter(option => option.coordinates.length >= 2 && !crossesIncident(option.coordinates, incidents));
+    if (!options.length) return { ...unset, reason: "Every available route enters an affected area. Choose points on its reported passage network." };
     return { status: "complete", distanceMeters: options[0].distanceMeters, coordinates: options[0].coordinates,
-      reason: `Standard ${mode} route outside mapped incidents.`, options };
+      expectedTravelTime: options[0].durationSeconds, reason: `Standard ${mode} route outside mapped incidents.`, options };
   } catch { throw new RequestError("The route service is temporarily unavailable. Try again shortly.", 503); }
 }

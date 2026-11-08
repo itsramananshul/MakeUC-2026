@@ -1,7 +1,8 @@
 import { UndirectedGraph } from "graphology";
 import { bidirectional, singleSource } from "graphology-shortest-path/dijkstra";
 import { nearestPoint } from "./geography";
-import { coordinateKey, distanceMeters, within, type Coordinate, type Incident, type IncidentRoute, type Road } from "./incident-types";
+import { coordinateKey, distanceMeters, within, type Coordinate, type Incident, type IncidentRoute, type IncidentSummary, type Road } from "./incident-types";
+import { crossesIncident } from "./route-boundaries";
 
 type Node = Coordinate & { label: string };
 type Graph = UndirectedGraph<Node, { weight: number }>;
@@ -28,7 +29,8 @@ function project(point: Coordinate, roads: Road[]) {
   return best;
 }
 
-export function incidentRoute(incident: Incident, origin: Coordinate, destination: Coordinate): IncidentRoute {
+export function incidentRoute(incident: Incident, origin: Coordinate, destination: Coordinate,
+  incidents: IncidentSummary[] = []): IncidentRoute {
   if (!within(origin, incident.bounds)) return noRoute("Choose a starting point inside the incident.");
   if (distanceMeters(origin, destination) < 1) return noRoute("Choose a different destination.");
   const graph: Graph = new UndirectedGraph();
@@ -62,9 +64,12 @@ export function incidentRoute(incident: Incident, origin: Coordinate, destinatio
     const { latitude, longitude } = graph.getNodeAttributes(id);
     return { latitude, longitude };
   });
+  if (crossesIncident(coordinates, incidents, incident.id)) {
+    return noRoute("This route enters another incident. The connection between incident areas is unverified.");
+  }
   const distance = coordinates.slice(1).reduce((sum, next, i) => sum + distanceMeters(coordinates[i], next), 0);
   return {
-    status: complete ? "complete" : "partial", coordinates, distanceMeters: Math.round(distance),
+    status: complete ? "complete" : "partial", coordinates, distanceMeters: Math.round(distance), incidentId: incident.id,
     startLabel: graph.getNodeAttribute(startId, "label"),
     endLabel: graph.getNodeAttribute(path.at(-1)!, "label"),
     reason: complete ? "Candidate walking route along reported open passages." :

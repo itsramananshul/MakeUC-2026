@@ -3,7 +3,7 @@ import { droneStatus, startDroneJob } from "@/lib/drone";
 import { geographicBounds } from "@/lib/geography";
 import { imageryLimit, mosaic } from "@/lib/imagery";
 import { incidentRoute } from "@/lib/incident-route";
-import { authorizeIncident, failJob, getEvidence, getIncident, incidentJob, pendingJob, recordJob, saveIncidentImage, setIncidentRoads, submitIncidentReport } from "@/lib/incident-store";
+import { authorizeIncident, failJob, getEvidence, getIncident, incidentJob, incidentList, pendingJob, recordJob, saveIncidentImage, setIncidentRoads, submitIncidentReport } from "@/lib/incident-store";
 import { bearer, failure, json, reportInput, routeInput } from "@/lib/incident-validation";
 import { loadRoads } from "@/lib/osm";
 import { RequestError } from "@/lib/store";
@@ -67,8 +67,11 @@ export async function POST(request: Request, context: Context) {
   try {
     const operation = action.join("/");
     if (operation === "route") {
-      const { origin, destination } = await readInput(request, routeInput);
-      return json(incidentRoute(getIncident(id), origin, destination));
+      const { origin, destination, mode } = await readInput(request, routeInput);
+      const incident = getIncident(id);
+      if (mode !== "walking") return json({ status: "unavailable", coordinates: [], distanceMeters: 0,
+        reason: "Switch to Walk to use reported passages in this incident." });
+      return json(incidentRoute(incident, origin, destination, incidentList()));
     }
     authorizeIncident(id, bearer(request));
     if (operation === "roads") return json({ incident: setIncidentRoads(id, await loadRoads(getIncident(id).bounds)) });

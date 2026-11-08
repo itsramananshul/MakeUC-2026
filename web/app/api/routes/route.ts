@@ -10,12 +10,14 @@ export async function POST(request: Request) {
     const { origin, destination, mode } = await readInput(request, routeInput);
     const incidents = incidentList();
     const active = incidents.find(incident => within(origin, incident.bounds) && within(destination, incident.bounds));
-    if (active && mode === "walking") return json(incidentRoute(getIncident(active.id), origin, destination));
+    if (active && mode === "walking") return json(incidentRoute(getIncident(active.id), origin, destination, incidents));
     if (incidents.some(incident => within(origin, incident.bounds) || within(destination, incident.bounds))) {
       return json({ status: "unavailable", coordinates: [], distanceMeters: 0,
         reason: active ? "Switch to walking to route along reported passages in this incident." :
           "This trip crosses an incident boundary. Open the incident to check its reported passages." });
     }
+    if (mode === "transit") return json({ status: "unavailable", coordinates: [], distanceMeters: 0,
+      reason: "Transit routing is currently unavailable. Choose Drive, Walk, or Bike." });
     return json(await standardRoute(origin, destination, incidents, mode));
   } catch (error) { return failure(error); }
 }
