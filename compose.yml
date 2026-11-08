@@ -1,8 +1,8 @@
 services:
   api:
-    build: .
+    build: ./web
     environment:
-      AFTERMAP_OPERATOR_KEY: ${AFTERMAP_OPERATOR_KEY:?Set the workspace operator key}
+      AFTERMAP_OPERATOR_KEY: ${AFTERMAP_OPERATOR_KEY:-}
       AFTERMAP_DB_RESTORE_URL: ${AFTERMAP_DB_RESTORE_URL:-}
       AFTERMAP_DB_RESTORE_TOKEN: ${AFTERMAP_DB_RESTORE_TOKEN:-}
       AFTERMAP_DB_RESTORE_SHA256: ${AFTERMAP_DB_RESTORE_SHA256:-}
