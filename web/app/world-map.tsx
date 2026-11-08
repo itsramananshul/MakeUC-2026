@@ -110,6 +110,10 @@ export default function WorldMap(props: Props) {
       setMessage("The world map requires WebGL. Enable it in your browser and refresh."); return;
     }
     map.current = view;
+    if (inputs.current.incidentPreview === undefined) {
+      view.scrollZoom.setWheelZoomRate(1 / 180);
+      view.scrollZoom.setZoomRate(1 / 70);
+    }
     const observer = new ResizeObserver(() => view.resize());
     observer.observe(host.current);
     view.addControl(new NavigationControl({ visualizePitch: false }), "top-right");

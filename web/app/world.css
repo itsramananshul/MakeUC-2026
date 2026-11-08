@@ -110,13 +110,13 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
   padding: 10px 13px; border-radius: 10px; background: #fff; max-width: 80%; text-align: center; box-shadow: 0 4px 16px #35435326; }
 .world-app .maplibregl-ctrl-top-right { right: 9px; top: 8px; }
 .world-app .maplibregl-ctrl-group { border-radius: 11px; box-shadow: 0 2px 12px #304b5a29; }
-.world-app .maplibregl-ctrl-group button { width: 35px; height: 36px; }
+.world-app .maplibregl-ctrl-group button { width: 44px; height: 44px; }
 .world-app .maplibregl-ctrl-attrib { background: #ffffffd8; }
-.world-basemap { position: absolute; z-index: 1; top: 131px; right: 19px; min-height: 35px;
+.world-basemap { position: absolute; z-index: 1; top: 159px; right: 19px; min-height: 35px;
   display: inline-flex; align-items: center; gap: 6px; padding: 0 9px; border: 0; border-radius: 9px;
   background: #fff; color: #17212b; box-shadow: 0 2px 12px #304b5a29; font-size: 12px; font-weight: 650; }
 .world-basemap:hover { background: #eef3f6; }
-.world-maptiler { position: absolute; z-index: 1; top: 185px; right: 19px; display: grid;
+.world-maptiler { position: absolute; z-index: 1; top: 214px; right: 19px; display: grid;
   place-items: center; padding: 4px; border-radius: 6px; background: #fffffff2; }
 .world-picking, .world-legend { position: absolute; display: flex; align-items: center; gap: 8px; z-index: 1;
   background: #ffffffee; border: 1px solid #d6dfe3; border-radius: 10px; padding: 6px 8px; box-shadow: 0 3px 14px #253b4826; }
