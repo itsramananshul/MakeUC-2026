@@ -232,6 +232,7 @@ struct RootView: View {
                     Text(navigationHeadline)
                         .font(.headline)
                         .lineLimit(2)
+                        .accessibilityIdentifier("navigation.instruction")
                     if let progress = store.navigationState.progress {
                         Text(navigationDistanceText(progress.distanceToManeuver))
                             .font(.subheadline.weight(.semibold))
@@ -246,6 +247,7 @@ struct RootView: View {
                 .buttonBorderShape(.circle)
                 .accessibilityLabel("Recenter navigation")
                 .accessibilityIdentifier("navigation.recenter")
+                .accessibilityValue(store.followsNavigationCamera ? "Following" : "Free")
                 Button { store.stopNavigation() } label: {
                     Image(systemName: "xmark")
                 }
@@ -273,6 +275,7 @@ struct RootView: View {
                     Text(navigationRemainingText(progress))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("navigation.remaining")
                 }
             case let .rerouting(progress):
                 HStack(spacing: 8) {

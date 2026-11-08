@@ -161,9 +161,20 @@ final class AftermapUITests: XCTestCase {
         start.tap()
 
         XCTAssertTrue(app.otherElements["navigation.banner"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Head northeast"].exists)
-        XCTAssertTrue(app.buttons["navigation.recenter"].exists)
+        XCTAssertTrue(app.staticTexts["navigation.instruction"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["navigation.remaining"].waitForExistence(timeout: 5))
+        let recenter = app.buttons["navigation.recenter"]
+        XCTAssertTrue(recenter.exists)
         XCTAssertTrue(app.buttons["navigation.end"].exists)
+
+        let map = app.otherElements["world.map"]
+        let startPoint = map.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.45))
+        startPoint.press(forDuration: 0.1, thenDragTo: startPoint.withOffset(CGVector(dx: -100, dy: 0)))
+        XCTAssertTrue(recenter.waitForExistence(timeout: 2))
+        XCTAssertEqual(recenter.value as? String, "Free")
+
+        recenter.tap()
+        XCTAssertEqual(recenter.value as? String, "Following")
     }
 
     func testFieldReportCanChooseMapPointWithoutTypingCoordinates() {

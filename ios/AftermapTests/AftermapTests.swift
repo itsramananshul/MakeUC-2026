@@ -774,6 +774,7 @@ final class AftermapTests: XCTestCase {
         XCTAssertEqual(progress.currentInstruction, "Head northeast")
         XCTAssertGreaterThan(progress.remainingDistance, 250)
         XCTAssertTrue(store.followsNavigationCamera)
+        XCTAssertEqual(store.lastNavigationAnnouncement, "Head northeast")
 
         store.suspendNavigationCameraFollowing()
         XCTAssertFalse(store.followsNavigationCamera)
@@ -782,6 +783,7 @@ final class AftermapTests: XCTestCase {
 
         store.acceptUserLocation(finish.coordinate)
         XCTAssertEqual(store.navigationState, .arrived)
+        XCTAssertEqual(store.lastNavigationAnnouncement, "You have arrived at your destination")
         XCTAssertFalse(store.followsNavigationCamera)
         XCTAssertTrue(store.navigationRemainingCoordinates.isEmpty)
     }

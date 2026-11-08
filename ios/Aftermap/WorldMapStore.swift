@@ -93,6 +93,7 @@ final class WorldMapStore: ObservableObject {
     @Published private(set) var navigationCameraFollowing = true
     @Published private(set) var navigationRenderRevision = 0
     @Published private(set) var navigationRemainingCoordinates: [IncidentCoordinate] = []
+    @Published private(set) var lastNavigationAnnouncement: String?
     @Published var reportLocation: IncidentCoordinate?
     @Published private(set) var reportLocationRevision = 0
     @Published var incidentDraftCenter: IncidentCoordinate?
@@ -1032,7 +1033,9 @@ final class WorldMapStore: ObservableObject {
     }
 
     private func speak(_ text: String) {
-        guard navigationVoiceEnabled, !text.isEmpty else { return }
+        guard !text.isEmpty else { return }
+        lastNavigationAnnouncement = text
+        guard navigationVoiceEnabled else { return }
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .voicePrompt, options: [.duckOthers])
         try? AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
         navigationVoice.stopSpeaking(at: .immediate)
