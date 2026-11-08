@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreLocation
 import Foundation
+import MapKit
 
 @MainActor
 final class WorldMapStore: ObservableObject {
@@ -117,7 +118,7 @@ final class WorldMapStore: ObservableObject {
     private var navigationLastSpokenManeuver = -1
     private var navigationOffRouteUpdates = 0
     private var navigationLastRerouteAt: Date?
-    private var navigationVoiceEnabled = true
+    @Published private(set) var navigationVoiceEnabled = true
     private let navigationVoice = AVSpeechSynthesizer()
     private lazy var navigationLocationDriver: NavigationLocationDriver = {
         let driver = NavigationLocationDriver()
@@ -358,6 +359,11 @@ final class WorldMapStore: ObservableObject {
     }
 
     private func fetchPlaces(term: String, revision: Int) async throws -> [PlaceResult] {
+        if shouldUseNativePlaceSearch,
+           let native = try? await NativePlaceSearch.places(query: term, near: searchReferenceCoordinate),
+           !native.isEmpty {
+            return sortPlacesByDistance(native)
+        }
         do {
             return sortPlacesByDistance(try await client.places(query: term, near: searchReferenceCoordinate))
         } catch {
@@ -373,6 +379,10 @@ final class WorldMapStore: ObservableObject {
 
     private var searchReferenceCoordinate: IncidentCoordinate? {
         userCoordinate ?? origin ?? cameraTarget?.coordinate
+    }
+
+    private var shouldUseNativePlaceSearch: Bool {
+        urlSession === URLSession.shared
     }
 
     private func sortPlacesByDistance(_ values: [PlaceResult]) -> [PlaceResult] {
@@ -421,6 +431,7 @@ final class WorldMapStore: ObservableObject {
         destinationPlace = selectedPlace
         routeState = .idle
         routeAlternatives = []
+        calculateRouteWhenReady()
     }
 
     func setOrigin(place: PlaceResult) {
@@ -456,6 +467,11 @@ final class WorldMapStore: ObservableObject {
             )]
         }
 #endif
+        if shouldUseNativePlaceSearch,
+           let native = try? await NativePlaceSearch.places(query: term, near: searchReferenceCoordinate),
+           !native.isEmpty {
+            return sortPlacesByDistance(native)
+        }
         do {
             return sortPlacesByDistance(try await client.places(query: term, near: searchReferenceCoordinate))
         } catch {
@@ -762,6 +778,17 @@ final class WorldMapStore: ObservableObject {
         navigationCameraRevision += 1
         navigationRenderRevision += 1
         if announce { speak("Navigation ended") }
+    }
+
+    func toggleNavigationVoice() {
+        navigationVoiceEnabled.toggle()
+        if navigationVoiceEnabled {
+            if let progress = navigationState.progress {
+                speak(progress.currentInstruction)
+            }
+        } else {
+            navigationVoice.stopSpeaking(at: .immediate)
+        }
     }
 
     func retryNavigation() {
@@ -1166,6 +1193,42 @@ final class WorldMapStore: ObservableObject {
     func focus(on coordinate: IncidentCoordinate, zoom: Double) {
         cameraRevision += 1
         cameraTarget = CameraTarget(coordinate: coordinate, zoom: zoom, revision: cameraRevision)
+    }
+}
+
+private enum NativePlaceSearch {
+    static func places(query: String, near reference: IncidentCoordinate?) async throws -> [PlaceResult] {
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = query
+        request.resultTypes = [.address, .pointOfInterest]
+        if let reference {
+            request.region = MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: reference.latitude, longitude: reference.longitude),
+                latitudinalMeters: 80_000,
+                longitudinalMeters: 80_000
+            )
+        }
+
+        let response = try await MKLocalSearch(request: request).start()
+        return response.mapItems.enumerated().compactMap { index, item in
+            let coordinate = item.placemark.coordinate
+            guard CLLocationCoordinate2DIsValid(coordinate) else { return nil }
+            let name = item.name?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedName = (name?.isEmpty == false ? name : nil) ?? item.placemark.title ?? query
+            let detail = item.placemark.title.flatMap { title in
+                title == resolvedName ? nil : title
+            } ?? [item.placemark.locality, item.placemark.administrativeArea]
+                .compactMap { $0 }
+                .joined(separator: ", ")
+            let idSeed = "\(resolvedName)|\(coordinate.latitude)|\(coordinate.longitude)|\(index)"
+            return PlaceResult(
+                id: "apple-\(idSeed.hashValue)",
+                name: resolvedName,
+                detail: detail,
+                latitude: coordinate.latitude,
+                longitude: coordinate.longitude
+            )
+        }
     }
 }
 

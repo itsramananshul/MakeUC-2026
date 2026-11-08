@@ -401,20 +401,24 @@ struct RootView: View {
                 .accessibilityAddTraits(.isButton)
                 .accessibilityIdentifier("dashboard.handle")
 
-            searchPanel
-                .frame(
-                    maxHeight: searchFocused && !store.places.isEmpty ? .infinity : nil,
-                    alignment: .top
-                )
-                .layoutPriority(searchFocused && !store.places.isEmpty ? 1 : 0)
+            if store.showsNavigationUI {
+                navigationBottomPanel
+            } else {
+                searchPanel
+                    .frame(
+                        maxHeight: searchFocused && !store.places.isEmpty ? .infinity : nil,
+                        alignment: .top
+                    )
+                    .layoutPriority(searchFocused && !store.places.isEmpty ? 1 : 0)
 
-            if dashboardDetent != Self.compactDashboardDetent {
-                if showingDirections {
-                    routePlanner
-                } else if let place = store.selectedPlace, !searchFocused {
-                    selectedPlaceCard(place)
-                } else if store.places.isEmpty && !searchFocused {
-                    dashboardActions
+                if dashboardDetent != Self.compactDashboardDetent {
+                    if showingDirections {
+                        routePlanner
+                    } else if let place = store.selectedPlace, !searchFocused {
+                        selectedPlaceCard(place)
+                    } else if store.places.isEmpty && !searchFocused {
+                        dashboardActions
+                    }
                 }
             }
         }
@@ -430,6 +434,104 @@ struct RootView: View {
                 }
             }
         }
+    }
+
+    private var navigationBottomPanel: some View {
+        VStack(spacing: 16) {
+            HStack {
+                navigationMetric(
+                    navigationArrivalText,
+                    label: "arrival"
+                )
+                navigationMetric(
+                    navigationRemainingMinutes,
+                    label: "min"
+                )
+                navigationMetric(
+                    navigationRemainingDistance,
+                    label: "remaining"
+                )
+            }
+
+            if dashboardDetent != Self.compactDashboardDetent {
+                VStack(spacing: 0) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "mappin.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(destinationLabel)
+                                .font(.headline)
+                                .lineLimit(2)
+                            Text("Destination")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .padding(14)
+
+                    Divider().padding(.leading, 48)
+
+                    Button {
+                        store.toggleNavigationVoice()
+                    } label: {
+                        Label(
+                            store.navigationVoiceEnabled ? "Voice Guidance On" : "Voice Guidance Off",
+                            systemImage: store.navigationVoiceEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill"
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("navigation.voice")
+                }
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
+
+                Button("End Route") {
+                    store.stopNavigation()
+                    showingDirections = true
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                        dashboardDetent = .medium
+                    }
+                }
+                .font(.headline)
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                .controlSize(.large)
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("navigation.end")
+            }
+        }
+    }
+
+    private func navigationMetric(_ value: String, label: String) -> some View {
+        VStack(spacing: 3) {
+            Text(value)
+                .font(.title2.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var navigationArrivalText: String {
+        guard let seconds = store.navigationState.progress?.remainingTime else { return "--:--" }
+        return Date.now.addingTimeInterval(seconds).formatted(date: .omitted, time: .shortened)
+    }
+
+    private var navigationRemainingMinutes: String {
+        guard let seconds = store.navigationState.progress?.remainingTime else { return "--" }
+        return String(max(1, Int(ceil(seconds / 60))))
+    }
+
+    private var navigationRemainingDistance: String {
+        guard let meters = store.navigationState.progress?.remainingDistance else { return "--" }
+        return Measurement(value: meters, unit: UnitLength.meters)
+            .formatted(.measurement(width: .abbreviated, usage: .road))
     }
 
     private var dashboardActions: some View {
@@ -481,8 +583,12 @@ struct RootView: View {
                     disabled: store.destination == nil
                 ) {
                     showingDirections = true
-                    dashboardDetent = .medium
-                    if store.origin == nil { store.requestCurrentLocationAsOrigin() }
+                    dashboardDetent = .large
+                    if store.origin == nil {
+                        store.requestCurrentLocationAsOrigin()
+                    } else if store.destination != nil, !store.canStartNavigation {
+                        Task { await store.previewRoute() }
+                    }
                 }
             }
 
@@ -491,149 +597,246 @@ struct RootView: View {
     }
 
     private func selectedPlaceCard(_ place: PlaceResult) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "mappin.circle.fill")
-                    .font(.largeTitle)
-                    .foregroundStyle(.red)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(place.name)
                         .font(.title2.weight(.bold))
-                    if !place.detail.isEmpty {
-                        Text(place.detail)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
+                        .lineLimit(2)
+                    Text(place.detail.isEmpty ? "Place" : place.detail)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
                 }
                 Spacer()
                 Button {
                     store.clearSearch()
+                    dashboardDetent = .medium
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(.secondary)
+                    Image(systemName: "xmark")
+                        .font(.headline.weight(.bold))
+                        .frame(width: 38, height: 38)
+                        .background(Color(.tertiarySystemFill), in: Circle())
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel("Close place details")
             }
 
-            Button {
-                store.useSelectedPlaceAsDestination()
-                showingDirections = true
-                dashboardDetent = .medium
-            } label: {
-                Label("Directions", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .accessibilityIdentifier("place.directions")
+            HStack(spacing: 10) {
+                Button {
+                    dismissKeyboard()
+                    store.useSelectedPlaceAsDestination()
+                    showingDirections = true
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                        dashboardDetent = .large
+                    }
+                    if store.origin == nil {
+                        store.requestCurrentLocationAsOrigin()
+                    }
+                } label: {
+                    placeActionLabel("Directions", icon: "car.fill", emphasized: true)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("place.directions")
 
-            HStack(spacing: 18) {
-                Label(String(format: "%.4f", place.latitude), systemImage: "location.north.line")
-                Label(String(format: "%.4f", place.longitude), systemImage: "location.east.line")
+                ShareLink(item: placeShareURL(place)) {
+                    placeActionLabel("Share", icon: "square.and.arrow.up", emphasized: false)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("place.share")
+
+                Menu {
+                    Button("Set as Start", systemImage: "location.fill") {
+                        store.setOrigin(place: place)
+                    }
+                    Button("Report an Incident Here", systemImage: "exclamationmark.triangle") {
+                        showingDisasterHub = true
+                    }
+                } label: {
+                    placeActionLabel("More", icon: "ellipsis", emphasized: false)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("place.more")
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var routePlanner: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Button {
-                    showingDirections = false
-                } label: {
-                    Image(systemName: "chevron.left")
-                }
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.circle)
-                Text("Directions")
-                    .font(.title2.weight(.bold))
-                Spacer()
-            }
-
-            VStack(spacing: 8) {
-                routeEndpointRow(
-                    icon: "location.fill",
-                    title: "Start",
-                    subtitle: originLabel
-                ) {
-                    endpointEditor = .origin
-                }
-                routeEndpointRow(
-                    icon: "mappin.and.ellipse",
-                    title: "Destination",
-                    subtitle: destinationLabel
-                ) {
-                    endpointEditor = .destination
-                }
-            }
-
-            HStack(spacing: 8) {
-                ForEach(RouteTravelMode.allCases, id: \.self) { mode in
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text("Directions")
+                        .font(.largeTitle.weight(.bold))
+                    Spacer()
                     Button {
-                        store.travelMode = mode
-                        if store.origin != nil, store.destination != nil {
-                            Task { await store.previewRoute() }
-                        }
+                        showingDirections = false
+                        store.stopNavigation(announce: false)
                     } label: {
-                        VStack(spacing: 4) {
-                            Image(systemName: mode.icon)
-                            Text(mode.shortLabel).font(.caption2.weight(.semibold))
-                        }
-                        .frame(maxWidth: .infinity)
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.bold))
+                            .frame(width: 40, height: 40)
+                            .background(Color(.tertiarySystemFill), in: Circle())
                     }
-                    .buttonStyle(.bordered)
-                    .tint(store.travelMode == mode ? .blue : .secondary)
-                    .accessibilityIdentifier("route.mode.\(mode.rawValue)")
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Close directions")
                 }
-            }
 
-            Button {
-                if store.origin == nil {
-                    store.requestCurrentLocationAsOrigin()
-                } else {
-                    Task { await store.previewRoute() }
-                }
-            } label: {
-                if store.routeState == .calculating {
-                    ProgressView().frame(maxWidth: .infinity)
-                } else {
-                    Label(store.origin == nil ? "Use My Location" : "Directions", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(store.destination == nil || store.routeState == .calculating)
-            .accessibilityIdentifier("route.calculate")
-
-            if store.routeAlternatives.count > 1 {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Route options")
-                        .font(.subheadline.weight(.semibold))
-                    ForEach(Array(store.routeAlternatives.enumerated()), id: \.offset) { index, route in
+                HStack(spacing: 0) {
+                    ForEach(RouteTravelMode.allCases, id: \.self) { mode in
                         Button {
-                            store.selectRouteAlternative(route)
-                        } label: {
-                            HStack {
-                                Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
-                                Text(routeOptionTitle(route, index: index))
-                                Spacer()
-                                Image(systemName: selectedRoute == route ? "checkmark.circle.fill" : "circle")
+                            store.travelMode = mode
+                            if store.origin != nil, store.destination != nil {
+                                Task { await store.previewRoute() }
                             }
-                            .padding(.vertical, 5)
+                        } label: {
+                            Image(systemName: mode.icon)
+                                .font(.title3.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 48)
+                                .background(
+                                    store.travelMode == mode ? Color(.tertiarySystemFill) : .clear,
+                                    in: Capsule()
+                                )
                         }
                         .buttonStyle(.plain)
-                        .accessibilityIdentifier("route.alternative.\(index)")
+                        .accessibilityLabel(mode.shortLabel)
+                        .accessibilityIdentifier("route.mode.\(mode.rawValue)")
+                    }
+                }
+                .padding(4)
+                .background(Color(.secondarySystemBackground), in: Capsule())
+
+                VStack(spacing: 0) {
+                    routeEndpointRow(icon: "location.fill", title: originLabel, subtitle: "Start") {
+                        endpointEditor = .origin
+                    }
+                    Divider().padding(.leading, 46)
+                    routeEndpointRow(icon: "building.columns.fill", title: destinationLabel, subtitle: "Destination") {
+                        endpointEditor = .destination
+                    }
+                }
+                .padding(.vertical, 2)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
+
+                if store.origin == nil || store.destination == nil {
+                    Button {
+                        if store.origin == nil { store.requestCurrentLocationAsOrigin() }
+                        else { endpointEditor = .destination }
+                    } label: {
+                        Label(store.origin == nil ? "Use My Location" : "Choose Destination", systemImage: "location.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .accessibilityIdentifier("route.calculate")
+                } else if store.routeState == .calculating {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text("Finding routes…")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 18)
+                } else if !store.routeAlternatives.isEmpty {
+                    VStack(spacing: 12) {
+                        ForEach(Array(store.routeAlternatives.enumerated()), id: \.offset) { index, route in
+                            routeOptionCard(route, index: index)
+                        }
+                    }
+                } else {
+                    Button {
+                        Task { await store.previewRoute() }
+                    } label: {
+                        Label("Find Routes", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .accessibilityIdentifier("route.calculate")
+                    routeStatus
+                }
+            }
+        }
+        .scrollDismissesKeyboard(.immediately)
+    }
+
+    private func placeActionLabel(_ title: String, icon: String, emphasized: Bool) -> some View {
+        VStack(spacing: 7) {
+            Image(systemName: icon)
+                .font(.title3.weight(.semibold))
+            Text(title)
+                .font(.caption.weight(.semibold))
+        }
+        .foregroundStyle(emphasized ? Color.white : Color.blue)
+        .frame(maxWidth: .infinity)
+        .frame(height: 78)
+        .background(
+            emphasized ? Color.blue : Color(.secondarySystemBackground),
+            in: RoundedRectangle(cornerRadius: 16)
+        )
+    }
+
+    private func placeShareURL(_ place: PlaceResult) -> URL {
+        var components = URLComponents(string: "https://maps.apple.com/")!
+        components.queryItems = [
+            URLQueryItem(name: "ll", value: "\(place.latitude),\(place.longitude)"),
+            URLQueryItem(name: "q", value: place.name)
+        ]
+        return components.url!
+    }
+
+    private func routeOptionCard(_ route: IncidentRouteResponse, index: Int) -> some View {
+        HStack(spacing: 14) {
+            Button {
+                store.selectRouteAlternative(route)
+            } label: {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(routeDurationText(route))
+                        .font(.title2.weight(.bold))
+                    Text(routeArrivalAndDistance(route))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text(index == 0 ? "Fastest" : "Alternative route")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("route.alternative.\(index)")
+
+            Button("GO") {
+                store.selectRouteAlternative(route)
+                if store.startNavigation() {
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                        dashboardDetent = Self.compactDashboardDetent
                     }
                 }
             }
-
-            routeStatus
-            navigationStartControl
+            .font(.title3.weight(.bold))
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.roundedRectangle(radius: 15))
+            .tint(.green)
+            .controlSize(.large)
+            .disabled(route.status != .complete || route.hasUnverifiedSegments)
+            .accessibilityIdentifier(index == 0 ? "navigation.start" : "route.go.\(index)")
         }
+        .padding(16)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20))
+    }
+
+    private func routeDurationText(_ route: IncidentRouteResponse) -> String {
+        guard let seconds = route.expectedTravelTime else { return "Route \(store.routeAlternatives.firstIndex(of: route).map { $0 + 1 } ?? 1)" }
+        return Duration.seconds(seconds).formatted(.units(width: .abbreviated))
+    }
+
+    private func routeArrivalAndDistance(_ route: IncidentRouteResponse) -> String {
+        let distance = Measurement(value: route.distanceMeters, unit: UnitLength.meters)
+            .formatted(.measurement(width: .abbreviated, usage: .road))
+        guard let seconds = route.expectedTravelTime else { return distance }
+        let arrival = Date.now.addingTimeInterval(seconds).formatted(date: .omitted, time: .shortened)
+        return "\(arrival) ETA • \(distance)"
     }
 
     @ViewBuilder private var navigationStartControl: some View {
@@ -812,7 +1015,6 @@ struct RootView: View {
         let duration = response.expectedTravelTime.map { Duration.seconds($0).formatted(.units(width: .abbreviated)) }
         let summary = [formatted, duration].compactMap { $0 }.joined(separator: " • ")
         if response.hasUnverifiedSegments {
-            let count = response.unverifiedSegments?.count ?? 0
             return "Route needs verification • \(summary)"
         }
         return switch response.status {
