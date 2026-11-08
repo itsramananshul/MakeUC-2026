@@ -12,6 +12,7 @@ type Source = {
   fromMap: { forward(point: number[]): number[] }; origin: number[]; resolution: number[];
   bounds: Bounds; noData: number | null;
 };
+export type DetailRaster = { bounds: Bounds; bytes: Buffer };
 
 function supportedCRS(keys: ReturnType<Awaited<ReturnType<Awaited<ReturnType<typeof fromArrayBuffer>>["getImage"]>>["getGeoKeys"]>) {
   const projected = keys?.ProjectedCSTypeGeoKey;
@@ -73,6 +74,9 @@ function union(sources: Source[]): Bounds {
   ];
 }
 
+const density = (source: Source) => Math.max(source.width / (source.bounds[2] - source.bounds[0]),
+  source.height / (source.bounds[3] - source.bounds[1]));
+
 export async function mosaic(files: ArrayBuffer[], alignLegacy = true) {
   if (!files.length || files.length > 8 || files.reduce((sum, file) => sum + file.byteLength, 0) > MAX_SIZE) {
     throw new RequestError("Choose one to eight GeoTIFFs under 72 MB total.");
@@ -84,12 +88,24 @@ export async function mosaic(files: ArrayBuffer[], alignLegacy = true) {
     coverage[1] < DRILL_BOUNDS[3] && coverage[3] > DRILL_BOUNDS[1] &&
     Math.max(coverage[2] - coverage[0], coverage[3] - coverage[1]) < 15_000;
   const bounds = aligned ? DRILL_BOUNDS : coverage;
+  if (!alignLegacy) sources.sort((a, b) => density(b) - density(a));
+  const dx = bounds[2] - bounds[0], dy = bounds[3] - bounds[1];
+  const size = alignLegacy ? 1500 : Math.min(3072, Math.max(dx, dy) * density(sources[0]));
+  const overview = await renderRaster(bounds, sources, size, 87);
+  if (!overview) throw new RequestError("The files do not contain visible map coverage.");
+  const detail: DetailRaster[] = [];
+  if (!alignLegacy && sources.length > 1) {
+    for (const source of [...sources].reverse()) {
+      const result = await renderRaster(source.bounds, [source], Math.max(source.width, source.height), 93);
+      if (result) detail.push({ bounds: source.bounds, bytes: result.bytes });
+    }
+  }
+  return { ...overview, bounds, aligned, count: sources.length, ...(detail.length ? { detail } : {}) };
+}
+
+async function renderRaster(bounds: Bounds, sources: Source[], size: number, quality: number) {
   const [west, south, east, north] = bounds;
   const dx = east - west, dy = north - south;
-  const density = (source: Source) => Math.max(source.width / (source.bounds[2] - source.bounds[0]),
-    source.height / (source.bounds[3] - source.bounds[1]));
-  if (!alignLegacy) sources.sort((a, b) => density(b) - density(a));
-  const size = alignLegacy ? 1500 : Math.min(3072, Math.max(dx, dy) * density(sources[0]));
   const width = Math.max(1, Math.round(size * Math.min(1, dx / dy)));
   const height = Math.max(1, Math.round(size * Math.min(1, dy / dx)));
   const pixels = Buffer.alloc(width * height * 4);
@@ -118,7 +134,7 @@ export async function mosaic(files: ArrayBuffer[], alignLegacy = true) {
       }
     }
   }
-  if (!painted) throw new RequestError("The files do not contain visible map coverage.");
-  const bytes = await sharp(pixels, { raw: { width, height, channels: 4 } }).webp({ quality: 87 }).toBuffer();
-  return { bytes, bounds, aligned, width, height, count: sources.length };
+  if (!painted) return null;
+  const bytes = await sharp(pixels, { raw: { width, height, channels: 4 } }).webp({ quality }).toBuffer();
+  return { bytes, width, height };
 }

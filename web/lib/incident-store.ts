@@ -2,7 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { publishIncidentUpdate } from "./incident-events";
 import { database, RequestError } from "./store";
 import {
-  coordinateKey, distanceMeters, within, type Coordinate, type FieldReport, type GeographicBounds,
+  coordinateKey, distanceMeters, withinIncident, type Coordinate, type FieldReport, type GeographicBounds,
   type Incident, type IncidentImagery, type IncidentSummary, type Road,
 } from "./incident-types";
 
@@ -158,7 +158,8 @@ export function setIncidentRoads(id: string, imported: Road[]) {
     return additions.length > 0;
   });
 }
-export function saveIncidentImage(id: string, bytes: Buffer, data: Omit<IncidentImagery, "url">, jobId?: string) {
+export function saveIncidentImage(id: string, bytes: Buffer, data: Omit<IncidentImagery, "url" | "detailTiles">, jobId?: string,
+  detail: { bounds: GeographicBounds; bytes: Buffer }[] = []) {
   return changeIncident(id, incident => {
     requireActiveIncident(incident);
     if (jobId && incidentJob(id, jobId)?.state !== "queued") return false;
@@ -166,15 +167,23 @@ export function saveIncidentImage(id: string, bytes: Buffer, data: Omit<Incident
     if (image.east <= bounds.west || image.west >= bounds.east || image.north <= bounds.south || image.south >= bounds.north) {
       throw new RequestError("This image is outside the selected incident area.", 422);
     }
-    const assetId = randomBytes(16).toString("hex");
     const db = database();
-    db.prepare("INSERT INTO imagery VALUES (?, ?)").run(assetId, bytes);
+    const insert = db.prepare("INSERT INTO imagery VALUES (?, ?)");
+    function saveAsset(buffer: Buffer) {
+      const assetId = randomBytes(16).toString("hex");
+      insert.run(assetId, buffer);
+      return `/api/imagery/${assetId}`;
+    }
     const surveys = incident.surveys ?? (incident.imagery ? [incident.imagery] : []);
     const unpublished = incident.unpublishedSurveys ?? [];
-    const newest = { ...data, url: `/api/imagery/${assetId}` };
+    const newest: IncidentImagery = { ...data, url: saveAsset(bytes) };
+    if (detail.length) newest.detailTiles = detail.map(tile => ({ bounds: tile.bounds, url: saveAsset(tile.bytes) }));
     if (surveys.length + unpublished.length >= 12) {
       const oldest = unpublished.shift() ?? surveys.shift();
-      if (oldest) db.prepare("DELETE FROM imagery WHERE id = ?").run(oldest.url.split("/").at(-1)!);
+      if (oldest) {
+        const remove = db.prepare("DELETE FROM imagery WHERE id = ?");
+        for (const raster of [oldest, ...(oldest.detailTiles ?? [])]) remove.run(raster.url.split("/").at(-1)!);
+      }
     }
     incident.surveys = [...surveys, newest];
     incident.imagery = newest;
@@ -213,14 +222,14 @@ export function submitIncidentReport(id: string, report: ReportInput) {
     if (report.edgeId && !road) throw new RequestError("That road segment was not found.", 404);
     if (report.from && report.to && !road && report.condition) {
       const length = distanceMeters(report.from, report.to);
-      if (length < 1 || length > 250 || !within(report.from, incident.bounds) || !within(report.to, incident.bounds)) {
+      if (length < 1 || length > 250 || !withinIncident(report.from, incident) || !withinIncident(report.to, incident)) {
         throw new RequestError("Mark two distinct points inside the incident, up to 250 m apart.");
       }
       function snap(point: Coordinate) {
         let nearest = point, gap = 12;
         for (const edge of incident.roads) for (const endpoint of [edge.from, edge.to]) {
           const distance = distanceMeters(point, endpoint);
-          if (distance < gap && within(endpoint, incident.bounds)) { gap = distance; nearest = endpoint; }
+          if (distance < gap && withinIncident(endpoint, incident)) { gap = distance; nearest = endpoint; }
         }
         return nearest;
       }
@@ -236,7 +245,7 @@ export function submitIncidentReport(id: string, report: ReportInput) {
         incident.roads.push(road);
       }
     }
-    if (!road && (!report.location || !within(report.location, incident.bounds))) {
+    if (!road && (!report.location || !withinIncident(report.location, incident))) {
       throw new RequestError("Choose a passage or a point inside this incident.");
     }
     if (road && !report.condition) throw new RequestError("Choose a passage condition.");

@@ -7,7 +7,8 @@ export type FieldReport = {
   note: string; at: string; evidenceType: "manual" | "text" | "voice" | "image";
   location?: Coordinate; evidenceUrl?: string;
 };
-export type IncidentImagery = { url: string; bounds: GeographicBounds; source: string; timestamp: string };
+export type SurveyRaster = { url: string; bounds: GeographicBounds };
+export type IncidentImagery = SurveyRaster & { source: string; timestamp: string; detailTiles?: SurveyRaster[] };
 export type IncidentSummary = {
   id: string; name: string; kind: "incident"; bounds: GeographicBounds; imagery: IncidentImagery | null; surveys?: IncidentImagery[];
   version: number; roadCount: number; resolvedAt?: string; recoveryImagery?: IncidentImagery;
@@ -18,11 +19,13 @@ export type TravelMode = "driving" | "walking" | "cycling";
 export type RouteOption = {
   coordinates: Coordinate[]; distanceMeters: number; durationSeconds: number;
   steps: { instruction: string; distanceMeters: number }[];
+  unverifiedSegments?: number[];
 };
 export type IncidentRoute = {
   status: "complete" | "partial" | "unavailable"; coordinates: Coordinate[]; distanceMeters: number;
   reason: string; startLabel?: string; endLabel?: string; options?: RouteOption[];
   incidentId?: string; expectedTravelTime?: number;
+  unverifiedSegments?: number[];
 };
 export const coordinateKey = (point: Coordinate) => `${point.longitude.toFixed(7)},${point.latitude.toFixed(7)}`;
 export const lngLat = (point: Coordinate): [number, number] => [point.longitude, point.latitude];
@@ -31,6 +34,16 @@ export const boundsTuple = (bounds: GeographicBounds): [number, number, number, 
 export const within = (point: Coordinate, bounds: GeographicBounds) =>
   point.longitude >= bounds.west && point.longitude <= bounds.east &&
   point.latitude >= bounds.south && point.latitude <= bounds.north;
+export const incidentCoverage = (incident: IncidentSummary): GeographicBounds[] =>
+  [incident.bounds, ...(incident.surveys ?? (incident.imagery ? [incident.imagery] : [])).map(image => image.bounds)];
+export const withinIncident = (point: Coordinate, incident: IncidentSummary) =>
+  incidentCoverage(incident).some(bounds => within(point, bounds));
+export function incidentExtent(incident: IncidentSummary) {
+  return incidentCoverage(incident).reduce((extent, bounds) => ({
+    west: Math.min(extent.west, bounds.west), south: Math.min(extent.south, bounds.south),
+    east: Math.max(extent.east, bounds.east), north: Math.max(extent.north, bounds.north),
+  }));
+}
 export function distanceMeters(a: Coordinate, b: Coordinate) {
   const radians = Math.PI / 180;
   const dy = (b.latitude - a.latitude) * radians;

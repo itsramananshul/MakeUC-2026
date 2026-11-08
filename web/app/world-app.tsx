@@ -5,11 +5,9 @@ import {
   Crosshair, Flag, Footprints, Globe, Info, KeyRound, Layers3, MapPin, PanelLeft, Plus, Route, Satellite, Search, ShieldAlert, X,
 } from "lucide-react";
 import Image from "next/image";
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
-import { distanceMeters, within, type Coordinate, type GeographicBounds, type Incident, type IncidentImagery, type IncidentRoute, type IncidentSummary, type Place, type TravelMode } from "@/lib/incident-types";
+import { distanceMeters, incidentExtent, withinIncident, type Coordinate, type GeographicBounds, type Incident, type IncidentImagery, type IncidentRoute, type IncidentSummary, type Place, type TravelMode } from "@/lib/incident-types";
 import { crossesIncident } from "@/lib/route-boundaries";
-import { cincinnatiFloodImagery, cincinnatiFloodSurveys, isCincinnati } from "@/lib/cincinnati-exercise";
 import { navigationLimits } from "@/lib/navigation";
 import { fetchJson, incidentPath, postJson } from "@/lib/world-client";
 import { AccessKey, CreateIncident, Modal, RemoveAerial, ReportIncident, ResolveIncident, SurveyUpload } from "./incident-dialogs";
@@ -56,7 +54,6 @@ export default function WorldApp() {
   const [focus, setFocus] = useState<Focus | null>(null);
   const [camera, setCamera] = useState({ center: earth, zoom: 1.65 });
   const [place, setPlace] = useState<Place | null>(null);
-  const [showCincinnatiFlood, setShowCincinnatiFlood] = useState(true);
   const [tripOpen, setTripOpen] = useState(false);
   const [incidentPanel, setIncidentPanel] = useState(false);
   const [showSteps, setShowSteps] = useState(false);
@@ -92,9 +89,9 @@ export default function WorldApp() {
   const selectedRoad = active?.roads.find(road => road.id === roadId) ?? null;
   const checkedRoute = useMemo(() => {
     if (!route || !route.coordinates.length) return route;
-    const options = route.options?.filter(option => !crossesIncident(option.coordinates, incidents));
+    const options = route.options?.filter(option => option.unverifiedSegments?.length || !crossesIncident(option.coordinates, incidents));
     if (options?.length) return { ...route, options };
-    if (options || crossesIncident(route.coordinates, incidents, route.incidentId)) {
+    if (options || (!route.unverifiedSegments?.length && crossesIncident(route.coordinates, incidents, route.incidentId))) {
       return { status: "unavailable", coordinates: [], distanceMeters: 0,
         reason: "The route enters an affected area. Open the incident to review its reported passages." } satisfies IncidentRoute;
     }
@@ -103,12 +100,13 @@ export default function WorldApp() {
   const selectedOption = checkedRoute?.options?.[routeIndex] ? routeIndex : 0;
   const routeOption = checkedRoute?.options?.[selectedOption];
   const visibleRoute = checkedRoute && routeOption ? { ...checkedRoute, ...routeOption } : checkedRoute;
-  const incidentAreas = incidents.map(incident => incident.id).sort().join(",");
+  const incidentAreas = incidents.map(incident => `${incident.id}:${incident.version}`).sort().join(",");
   const navigationIncident = visibleRoute?.incidentId;
   const navigationRevision = incidents.find(incident => incident.id === navigationIncident)?.version ?? active?.version ?? 0;
   const navigation = useLiveNavigation(`${incidentAreas}:${navigationRevision}`);
   const { trip: liveTrip, snapshot: guidance } = navigation;
-  const canNavigate = !!destination && visibleRoute?.status === "complete" && visibleRoute.coordinates.length >= 2;
+  const canNavigate = !routing && !!destination && visibleRoute?.status === "complete" &&
+    !visibleRoute.unverifiedSegments?.length && visibleRoute.coordinates.length >= 2;
   const reports = active?.reports ?? [];
   const shownReports = reports.slice(0, 40);
   const pinnedReport = reports.find(report => report.id === focusedReport);
@@ -174,7 +172,7 @@ export default function WorldApp() {
         if (cancelled) return;
         setActive(current => current?.id === next.id && current.version >= next.version ? current : next);
         setStale(false);
-        if (first) { setFocus({ bounds: next.bounds }); first = false; }
+        if (first) { setFocus({ bounds: incidentExtent(next) }); first = false; }
       } catch (error) {
         if (!cancelled) { setStale(true); if (first) setError(getMessage(error)); }
       }
@@ -198,7 +196,7 @@ export default function WorldApp() {
     try { localStorage.setItem(accessStorage(id), key); } catch {}
   }
   function chooseIncident(id: string) {
-    if (id === selected) { if (active) setFocus({ bounds: active.bounds }); return; }
+    if (id === selected) { if (active) setFocus({ bounds: incidentExtent(active) }); return; }
     setActive(null); setSelected(id); setRoadId(null); setFocusedReport(""); setRoadQuery(""); setPoints([]); setStale(false); setError("");
     resetRoute(); setTripOpen(false); setIncidentPanel(!!id); setPicking(null); setStart(null); setDestination(null);
     setPlace(null); setSidebar(true); setSheet(1); setMobileSearch(false);
@@ -221,8 +219,7 @@ export default function WorldApp() {
 
   function choosePlace(item: Place) {
     setPlace(item); setTripOpen(false); setIncidentPanel(false); setPicking(null); resetRoute(); setMessage("");
-    setShowCincinnatiFlood(true);
-    setFocus(isCincinnati(item) ? { bounds: cincinnatiFloodImagery.bounds } : { point: item, zoom: 15 });
+    setFocus({ point: item, zoom: 15 });
     setSheet(1);
     if (mobileSearch) closeMobileSearch();
   }
@@ -246,7 +243,7 @@ export default function WorldApp() {
       return;
     }
     if (picking === "point" || picking === "connection") {
-      if (active && !within(point, active.bounds)) { setError("Choose a point inside the incident boundary."); return; }
+      if (active && !withinIncident(point, active)) { setError("Choose a point inside the incident or its aerial coverage."); return; }
       if (picking === "connection" && points.length === 1 && distanceMeters(points[0], point) < 1) {
         setError("Choose a different point for the other end."); return;
       }
@@ -273,16 +270,15 @@ export default function WorldApp() {
   useEffect(() => {
     if (!tripOpen || !start || !destination || liveTrip) return;
     const controller = new AbortController();
-    const endpoint = active && !active.resolvedAt && mode === "walking" && within(start, active.bounds) ? incidentPath(active.id, "route") : "/api/routes";
     async function loadRoute() {
       setRouting(true); setRouteError("");
       try {
-        const next = await fetchJson<IncidentRoute>(endpoint, { method: "POST", signal: controller.signal,
+        const next = await fetchJson<IncidentRoute>("/api/routes", { method: "POST", signal: controller.signal,
           headers: { "Content-Type": "application/json" }, body: JSON.stringify({ origin: start, destination, mode }),
         });
         if (controller.signal.aborted) return;
         setRoute(next); setRouteIndex(0);
-        if (next.options?.length) setFocus({ bounds: routeBounds([start!, destination!, ...next.coordinates]) });
+        if (next.coordinates.length > 1) setFocus({ bounds: routeBounds([start!, destination!, ...next.coordinates]) });
       } catch (error) { if (!controller.signal.aborted) { setRoute(null); setRouteError(getMessage(error)); } }
       finally { if (!controller.signal.aborted) setRouting(false); }
     }
@@ -306,7 +302,7 @@ export default function WorldApp() {
     finally { setImporting(false); }
   }
   function startTrip(point?: Place) {
-    if (!tripOpen) setMode(active && !active.resolvedAt ? "walking" : "driving");
+    if (!tripOpen) setMode((active && !active.resolvedAt) || (point && incidents.some(incident => withinIncident(point, incident))) ? "walking" : "driving");
     setTripOpen(true); setIncidentPanel(false); setShowSteps(false); setSheet(1); setMobileSearch(false);
     if (!tripOpen || point) resetRoute();
     if (!start && deviceOrigin) setStart(deviceOrigin);
@@ -331,11 +327,6 @@ export default function WorldApp() {
   const directionsVisible = tripOpen && !incidentPanel;
   const searchVisible = !directionsVisible && !incidentPanel;
   const compactSearch = sheet === 0 && searchVisible && !picking;
-  const cincinnatiSelected = !!place && isCincinnati(place);
-  const cincinnatiBounds = cincinnatiFloodImagery.bounds;
-  const overlapsCincinnati = [...incidents, ...recoveryImagery].some(({ bounds }) => bounds.west < cincinnatiBounds.east &&
-    bounds.east > cincinnatiBounds.west && bounds.south < cincinnatiBounds.north && bounds.north > cincinnatiBounds.south);
-  const canPreviewCincinnati = cincinnatiSelected && !active && !overlapsCincinnati;
   function closeMobileSearch() {
     setMobileSearch(false);
     mapShell.current?.querySelector<HTMLInputElement>("[name=place]")?.blur();
@@ -439,14 +430,6 @@ export default function WorldApp() {
               <button className="world-primary" type="button" onClick={() => startTrip(place)}><Route size={15} /> Directions</button>
               {!active && <button className="world-secondary" type="button" onClick={() => { setPicking(null); setModal("create"); }}><Plus size={15} /> Report here</button>}
             </div>
-            {cincinnatiSelected && <div className="cincinnati-preview-actions">
-              {canPreviewCincinnati && <button className="world-secondary" type="button" aria-pressed={showCincinnatiFlood}
-                onClick={() => {
-                  if (!showCincinnatiFlood) setFocus({ bounds: cincinnatiBounds });
-                  setShowCincinnatiFlood(!showCincinnatiFlood);
-                }}><Satellite size={15} aria-hidden /> Flood imagery</button>}
-              <Link className="world-text" href="/exercise/cincinnati">Open flood map <ChevronRight size={15} aria-hidden /></Link>
-            </div>}
           </div>}
           <section className="mobile-map-tools" aria-label="Map tools">
             <h2>Map tools</h2>
@@ -488,6 +471,7 @@ export default function WorldApp() {
             }}><ArrowLeft size={19} /></button>
             <h2 className="tray-heading">Route Details</h2>
           </header>
+          {!!routeOption.unverifiedSegments?.length && <p className="world-hint">Dashed sections have no report confirming they’re open.</p>}
           <p className="route-detail-label">Steps</p>
           <ol className="route-maneuvers">
             <li><span className="maneuver-pin start"><MapPin size={16} /></span><span><strong>{start?.label}</strong>{start?.detail && <small>{start.detail}</small>}</span></li>
@@ -534,13 +518,13 @@ export default function WorldApp() {
               resetRoute(); setStart(destination); setDestination(start); setPicking(null);
             }}><ArrowDownUp size={15} aria-hidden /> Swap</button>
           </div>
-          {active && <details className="direction-pick-options">
+          <details className="direction-pick-options">
             <summary>Pick a point on the map</summary>
             <div className="world-action-row">
               <button className="world-secondary" type="button" onClick={() => setPicking("start")}>Pick start on map</button>
               <button className="world-secondary" type="button" onClick={() => setPicking("destination")}>Pick destination on map</button>
             </div>
-          </details>}
+          </details>
           {routing && <small role="status" className="direction-search-status">Finding routes…</small>}
           {routeError && <div className="world-route-result unavailable">
             <small role="alert">{routeError}</small>
@@ -554,7 +538,8 @@ export default function WorldApp() {
                   if (start && destination) setFocus({ bounds: routeBounds([start, destination, ...option.coordinates]) });
                 }}>
                 <strong>{formatDuration(option.durationSeconds)}</strong>
-                <span>{formatDistance(option.distanceMeters)}{checkedRoute.options!.length > 1 && ` · Route ${index + 1}`}</span>
+                <span>{formatDistance(option.distanceMeters)}{option.unverifiedSegments?.length ? " · Unverified sections" :
+                  checkedRoute.options!.length > 1 ? ` · Route ${index + 1}` : ""}</span>
               </button>
               <button className="direction-info" type="button" aria-label={`Route details${checkedRoute.options!.length > 1 ? ` for route ${index + 1}` : ""}`}
                 onClick={() => {
@@ -562,10 +547,12 @@ export default function WorldApp() {
                   if (start && destination) setFocus({ bounds: routeBounds([start, destination, ...option.coordinates]) });
                 }}><Info size={19} /></button>
             </div>)}
+            {!!routeOption.unverifiedSegments?.length && <p className="world-hint">Dashed sections have no report confirming they’re open.</p>}
             <small className="world-attribution">Checked against mapped incidents · <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noreferrer">OSRM routing</a></small>
           </div> : visibleRoute && <div className={`world-route-result ${visibleRoute.status}`}>
             <strong role="status">{visibleRoute.status === "unavailable" ? "Route unavailable" :
-              visibleRoute.status === "partial" ? "Partial route only" : "Walking route"}
+              visibleRoute.status === "partial" ? "Partial route only" : visibleRoute.unverifiedSegments?.length ?
+                "Walking route with unverified sections" : "Walking route"}
               {visibleRoute.distanceMeters > 0 && ` · ${formatDistance(visibleRoute.distanceMeters)}`}</strong>
             <small>{visibleRoute.reason}</small>
           </div>}
@@ -643,7 +630,6 @@ export default function WorldApp() {
         navigationPosition={guidance?.position}
         navigationZoom={liveTrip && followNavigation ? navigationLimits[liveTrip.mode].zoom : undefined}
         onFreePan={() => setFollowNavigation(false)}
-        exerciseImagery={canPreviewCincinnati && showCincinnatiFlood && searchVisible ? cincinnatiFloodSurveys : undefined}
         start={tripOpen && !liveTrip ? start : null} destination={tripOpen ? destination : place}
         selectedRoad={roadId} aerial={aerial} picking={!!picking} sidebarVisible={sidebar} onCamera={setCamera}
         onPoint={choosePoint} onRoad={selectRoad} onIncident={chooseIncident} onReport={selectReport} />
@@ -664,7 +650,10 @@ export default function WorldApp() {
       }} />
     </Modal>}
     {modal === "survey" && active && <Modal title="Add aerial imagery" description="Upload a georeferenced survey or overlapping geotagged drone photos for this incident." onClose={() => setModal(null)}>
-      <SurveyUpload incident={active} access={access} onUpload={next => { applyIncident(next); setAerial(true); setModal(null); setMessage("Aerial survey added."); }} />
+      <SurveyUpload incident={active} access={access} onUpload={next => {
+        applyIncident(next); setAerial(true); setModal(null);
+        setFocus({ bounds: incidentExtent(next) }); setMessage("Aerial survey added.");
+      }} />
     </Modal>}
     {modal === "remove-aerial" && active && <Modal title="Remove aerial imagery" description="Restore the original map imagery in this area for everyone. The incident and its field reports stay on the map." onClose={() => setModal(null)}>
       <RemoveAerial incident={active} access={access} onRemove={next => {

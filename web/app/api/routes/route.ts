@@ -1,20 +1,18 @@
-import { incidentRoute } from "@/lib/incident-route";
-import { getIncident, incidentList } from "@/lib/incident-store";
-import { within } from "@/lib/incident-types";
+import { incidentList } from "@/lib/incident-store";
+import { withinIncident } from "@/lib/incident-types";
 import { failure, json, routeInput } from "@/lib/incident-validation";
 import { standardRoute } from "@/lib/osm";
 import { readInput } from "@/lib/validation";
+import { walkingDirections } from "@/lib/walking-directions";
 export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
     const { origin, destination, mode } = await readInput(request, routeInput);
     const incidents = incidentList();
-    const active = incidents.find(incident => within(origin, incident.bounds) && within(destination, incident.bounds));
-    if (active && mode === "walking") return json(incidentRoute(getIncident(active.id), origin, destination, incidents));
-    if (incidents.some(incident => within(origin, incident.bounds) || within(destination, incident.bounds))) {
+    if (mode === "walking") return json(await walkingDirections(origin, destination, incidents));
+    if (incidents.some(incident => withinIncident(origin, incident) || withinIncident(destination, incident))) {
       return json({ status: "unavailable", coordinates: [], distanceMeters: 0,
-        reason: active ? "Switch to walking to route along reported passages in this incident." :
-          "This trip crosses an incident boundary. Open the incident to check its reported passages." });
+        reason: "Switch to Walk for directions that include streets in the affected area." });
     }
     if (mode === "transit") return json({ status: "unavailable", coordinates: [], distanceMeters: 0,
       reason: "Transit routing is currently unavailable. Choose Drive, Walk, or Bike." });

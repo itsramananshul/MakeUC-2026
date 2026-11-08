@@ -2,12 +2,13 @@ import { after } from "next/server";
 import { droneStatus, startDroneJob } from "@/lib/drone";
 import { geographicBounds } from "@/lib/geography";
 import { imageryLimit, mosaic } from "@/lib/imagery";
-import { incidentRoute } from "@/lib/incident-route";
+import { incidentExtent } from "@/lib/incident-types";
 import { authorizeIncident, failJob, getEvidence, getIncident, incidentJob, incidentList, pendingJob, recordJob, removeIncidentImagery, requireActiveIncident, resolveIncident, saveIncidentImage, setIncidentRoads, submitIncidentReport } from "@/lib/incident-store";
 import { bearer, failure, json, reportInput, resolveInput, routeInput } from "@/lib/incident-validation";
 import { loadRoads } from "@/lib/osm";
 import { RequestError } from "@/lib/store";
 import { readInput } from "@/lib/validation";
+import { walkingDirections } from "@/lib/walking-directions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +18,8 @@ const syncingSurveys = new Set<string>();
 async function syncSurvey(id: string, job: NonNullable<ReturnType<typeof incidentJob>>) {
   try {
     const result = await droneStatus(id, job.id, (bytes, data) => {
-      saveIncidentImage(id, bytes, { bounds: geographicBounds(data.bounds), source: data.source, timestamp: data.timestamp }, job.id);
+      saveIncidentImage(id, bytes, { bounds: geographicBounds(data.bounds), source: data.source, timestamp: data.timestamp }, job.id,
+        data.detail?.map(tile => ({ bounds: geographicBounds(tile.bounds), bytes: tile.bytes })));
     }, job.created_at);
     if (result.status === "failed") failJob(id, job.id);
     return result;
@@ -73,7 +75,7 @@ export async function POST(request: Request, context: Context) {
         reason: "This incident is resolved. Use standard directions." });
       if (mode !== "walking") return json({ status: "unavailable", coordinates: [], distanceMeters: 0,
         reason: "Switch to Walk to use reported passages in this incident." });
-      return json(incidentRoute(incident, origin, destination, incidentList()));
+      return json(await walkingDirections(origin, destination, incidentList()));
     }
     authorizeIncident(id, bearer(request));
     if (operation === "resolve") {
@@ -82,7 +84,7 @@ export async function POST(request: Request, context: Context) {
     }
     if (operation === "roads") {
       const incident = requireActiveIncident(getIncident(id));
-      return json({ incident: setIncidentRoads(id, await loadRoads(incident.bounds)) });
+      return json({ incident: setIncidentRoads(id, await loadRoads(incidentExtent(incident))) });
     }
     if (operation === "reports") {
       return json({ incident: submitIncidentReport(id, await readInput(request, reportInput, 1_610_000)) });
@@ -108,7 +110,7 @@ export async function POST(request: Request, context: Context) {
       const incident = saveIncidentImage(id, result.bytes, {
         bounds: geographicBounds(result.bounds), timestamp: new Date().toISOString(),
         source: files.length === 1 ? "Uploaded GeoTIFF" : `${files.length} uploaded GeoTIFFs`,
-      });
+      }, undefined, result.detail?.map(tile => ({ bounds: geographicBounds(tile.bounds), bytes: tile.bytes })));
       return json({ incident });
     }
     return json({ error: "Unknown incident endpoint." }, 404);

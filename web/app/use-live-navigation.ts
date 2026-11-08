@@ -94,6 +94,10 @@ export function useLiveNavigation(revision: string) {
           display("paused", next.reason);
           return;
         }
+        if (next.unverifiedSegments?.length) {
+          display("paused", "The available route includes streets that haven’t been confirmed open.");
+          return;
+        }
         route = next.options?.[0] ? { ...next, ...next.options[0] } : next;
         path = indexRoute(route);
         routeValid = true;

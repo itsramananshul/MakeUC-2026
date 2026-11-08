@@ -74,7 +74,6 @@
 .world-place > div { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
 .world-place > div > div { flex: 1; display: grid; gap: 4px; overflow-wrap: anywhere; }
 .world-place small { color: var(--world-muted); }
-.world-place .cincinnati-preview-actions { flex-wrap: wrap; margin: 0; }
 .world-nav { width: 100%; display: flex; align-items: center; gap: 9px; padding: 4px 6px; min-height: 39px;
   background: transparent; border: 0; border-radius: 8px; font-weight: 620; text-align: left; }
 .world-nav:hover { background: #e7eef3; }
@@ -180,10 +179,6 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
 .world-basemap:hover { background: #eef3f6; }
 .world-maptiler { position: absolute; z-index: 1; top: 214px; right: 19px; display: grid;
   place-items: center; padding: 4px; border-radius: 6px; background: #fffffff2; }
-.world-exercise-badge { position: absolute; z-index: 1; top: 18px; left: calc(var(--map-obstruction, 0px) + 15px);
-  max-width: calc(100% - var(--map-obstruction, 0px) - 85px); border: 1px solid #ffcc7a80; border-radius: 9px;
-  padding: 7px 10px; background: #302418f2; color: #ffe2aa; font-size: 12px; font-weight: 650; }
-.world-app:not(.with-world-sidebar) .world-exercise-badge { left: 60px; }
 .world-picking, .world-legend { position: absolute; display: flex; align-items: center; gap: 8px; z-index: 1;
   background: #ffffffee; border: 1px solid #d6dfe3; border-radius: 10px; padding: 6px 8px; box-shadow: 0 3px 14px #253b4826; }
 .world-picking { top: 17px; left: 50%; transform: translateX(-50%); font-size: 13px; font-weight: 650; }
@@ -448,7 +443,6 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
   .world-main-map .world-sidebar .sidebar-status { background: #203743; color: #e0f5ff; }
   .world-main-map .world-sidebar .sidebar-status.incident-error { background: #512a34; color: #ffc2c8; }
   .world-main-map .world-place { margin-top: 13px; padding: 12px; border-radius: 14px; }
-  .world-main-map .cincinnati-preview-actions a { min-height: 44px; }
   .world-main-map :is(.maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right) {
     bottom: var(--mobile-sheet-size);
   }

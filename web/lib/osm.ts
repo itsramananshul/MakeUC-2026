@@ -116,7 +116,7 @@ function describeStep({ maneuver, name, ref, destinations }: RoutingStep) {
 }
 
 export async function standardRoute(origin: Coordinate, destination: Coordinate, incidents: IncidentSummary[],
-  mode: TravelMode): Promise<IncidentRoute> {
+  mode: TravelMode, assess?: (option: RouteOption) => RouteOption | null): Promise<IncidentRoute> {
   const unset: IncidentRoute = { status: "unavailable", coordinates: [], distanceMeters: 0,
     reason: `No ${mode} route connects these points. Check the two locations or try another travel mode.` };
   if (distanceMeters(origin, destination) < 1) return { ...unset, reason: "Choose a different destination." };
@@ -146,9 +146,17 @@ export async function standardRoute(origin: Coordinate, destination: Coordinate,
       steps: route.legs.flatMap(leg => leg.steps.map(step => ({
         instruction: describeStep(step), distanceMeters: Math.round(step.distance),
       }))),
-    })).filter(option => option.coordinates.length >= 2 && !crossesIncident(option.coordinates, incidents));
-    if (!options.length) return { ...unset, reason: "Every available route enters an affected area. Choose points on its reported passage network." };
+    })).flatMap(option => {
+      if (option.coordinates.length < 2) return [];
+      const accepted = assess ? assess(option) : crossesIncident(option.coordinates, incidents) ? null : option;
+      return accepted ? [accepted] : [];
+    });
+    if (assess) options.sort((a, b) => Number(!!a.unverifiedSegments?.length) - Number(!!b.unverifiedSegments?.length));
+    if (!options.length) return { ...unset, reason: assess ? "Available routes use a reported closure or hazard. Try a different start or destination." :
+      "Every available route enters an affected area. Choose points on its reported passage network." };
     return { status: "complete", distanceMeters: options[0].distanceMeters, coordinates: options[0].coordinates,
-      expectedTravelTime: options[0].durationSeconds, reason: `Standard ${mode} route outside mapped incidents.`, options };
+      expectedTravelTime: options[0].durationSeconds, unverifiedSegments: options[0].unverifiedSegments,
+      reason: options[0].unverifiedSegments?.length ? "Dashed sections have no report confirming they’re open." :
+        `Standard ${mode} route outside mapped incidents.`, options };
   } catch { throw new RequestError("The route service is temporarily unavailable. Try again shortly.", 503); }
 }

@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Layers2, Satellite } from "lucide-react";
 import { Map as MapLibreMap, NavigationControl, ScaleControl, setWorkerUrl, type GeoJSONSource, type Map as MapInstance } from "maplibre-gl";
-import type { Feature, FeatureCollection, Geometry } from "geojson";
-import { boundsTuple, lngLat, type Coordinate, type GeographicBounds, type Incident, type IncidentImagery, type IncidentRoute, type IncidentSummary } from "@/lib/incident-types";
+import type { Feature, FeatureCollection, Geometry, LineString } from "geojson";
+import { boundsTuple, incidentCoverage, lngLat, type Coordinate, type GeographicBounds, type Incident, type IncidentImagery, type IncidentRoute, type IncidentSummary, type SurveyRaster } from "@/lib/incident-types";
 
 type Camera = { center: Coordinate; zoom: number };
 type Focus = { point: Coordinate; zoom?: number } | { bounds: GeographicBounds };
@@ -16,7 +16,6 @@ type Props = {
   onReport?: (id: string) => void;
   sidebarVisible?: boolean;
   recoveryImagery?: IncidentImagery[];
-  exerciseImagery?: IncidentImagery[];
   navigationPosition?: Coordinate;
   navigationZoom?: number;
   onFreePan?: () => void;
@@ -80,10 +79,13 @@ function addLayers(map: MapInstance, satellite: boolean) {
   } });
   map.addLayer({ id: "route-outline", type: "line", source: "route",
     layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#fff", "line-width": 9 } });
-  map.addLayer({ id: "route-line", type: "line", source: "route",
+  map.addLayer({ id: "route-line", type: "line", source: "route", filter: ["!=", ["get", "state"], "unverified"],
     layout: { "line-cap": "round", "line-join": "round" }, paint: {
       "line-color": ["case", ["==", ["get", "state"], "partial"], "#ce781d", "#176df1"], "line-width": 5.5,
     } });
+  map.addLayer({ id: "route-unverified", type: "line", source: "route", filter: ["==", ["get", "state"], "unverified"],
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": "#ae5208", "line-width": 5.5, "line-dasharray": [1.4, 1.8] } });
   map.addLayer({ id: "incident-pins", type: "circle", source: "incidents", paint: {
     "circle-color": "#e67429", "circle-stroke-color": "#fff", "circle-stroke-width": 2.5, "circle-radius": 8,
   } });
@@ -102,7 +104,6 @@ export default function WorldMap(props: Props) {
   const [ready, setReady] = useState(false);
   const [message, setMessage] = useState("");
   const [satellite, setSatellite] = useState(true);
-  const exerciseImagery = satellite ? props.exerciseImagery : undefined;
   const locationPicker = props.incidentPreview !== undefined;
   useEffect(() => { inputs.current = props; }, [props]);
   useEffect(() => {
@@ -223,17 +224,31 @@ export default function WorldMap(props: Props) {
       return point({ latitude: (south + north) / 2, longitude: (east + west) / 2 }, { id: item.id });
     }));
     set("boundaries", props.incidentPreview ? [polygon(props.incidentPreview.bounds, { id: "preview" })] :
-      [...others, ...(active ? [active] : [])].map(item => polygon(item.bounds, { id: item.id })));
+      [...others, ...(active ? [active] : [])].flatMap(item => {
+        const areas = incidentCoverage(item);
+        return (areas.length > 1 ? areas.slice(1) : areas).map(bounds => polygon(bounds, { id: item.id }));
+      }));
     set("roads", (active?.roads ?? []).map(road => ({
       type: "Feature", geometry: { type: "LineString", coordinates: [lngLat(road.from), lngLat(road.to)] },
       properties: { id: road.id, state: road.state, selected: props.selectedRoad === road.id ? "yes" : "no" },
     })));
     set("reports", (active?.reports ?? []).flatMap(report =>
       report.location && !report.edgeId ? [point(report.location, { id: report.id })] : []));
-    set("route", props.route && props.route.coordinates.length > 1 ? [{
-      type: "Feature", geometry: { type: "LineString", coordinates: props.route.coordinates.map(lngLat) },
-      properties: { state: props.route.status },
-    }] : []);
+    const route = props.route;
+    const lines: Feature<LineString>[] = [];
+    if (route) {
+      const unverified = new Set(route.unverifiedSegments);
+      for (let index = 1; index < route.coordinates.length; index++) {
+        const state = unverified.has(index - 1) ? "unverified" : route.status;
+        const last = lines.at(-1);
+        const position = lngLat(route.coordinates[index]);
+        if (last?.properties?.state === state) last.geometry.coordinates.push(position);
+        else lines.push({ type: "Feature", geometry: {
+          type: "LineString", coordinates: [lngLat(route.coordinates[index - 1]), position],
+        }, properties: { state } });
+      }
+    }
+    set("route", lines);
   }, [ready, props.incidents, props.active, props.route, props.selectedRoad, props.incidentPreview]);
 
   useEffect(() => {
@@ -241,11 +256,11 @@ export default function WorldMap(props: Props) {
     const markers = map.current.getSource("markers") as GeoJSONSource;
     markers.setData(collection([
       ...(props.start ? [point(props.start, { kind: "start" })] : []),
-      ...(props.destination && (!exerciseImagery || props.active) ? [point(props.destination, { kind: "destination" })] : []),
+      ...(props.destination ? [point(props.destination, { kind: "destination" })] : []),
       ...(props.navigationPosition ? [point(props.navigationPosition, { kind: "position" })] : []),
       ...(props.incidentPreview ? [point(props.incidentPreview.center, { kind: "incident" })] : []),
     ]));
-  }, [ready, props.start, props.destination, props.active, props.incidentPreview, props.navigationPosition, exerciseImagery]);
+  }, [ready, props.start, props.destination, props.incidentPreview, props.navigationPosition]);
 
   useEffect(() => {
     if (!map.current || !ready || locationPicker) return;
@@ -256,7 +271,7 @@ export default function WorldMap(props: Props) {
     const layers = surveyLayers.current;
     function renderSurveys() {
       const bounds = view.getBounds();
-      const showsArea = (image: IncidentImagery) => view.getZoom() >= 9 &&
+      const showsArea = (image: SurveyRaster) => view.getZoom() >= 9 &&
         image.bounds.west <= bounds.getEast() && image.bounds.east >= bounds.getWest() &&
         image.bounds.south <= bounds.getNorth() && image.bounds.north >= bounds.getSouth();
       const activeSurveys = (item: IncidentSummary) => item.surveys ?? (item.imagery ? [item.imagery] : []);
@@ -265,8 +280,9 @@ export default function WorldMap(props: Props) {
         ...incidents.filter(item => item.id !== active?.id).flatMap(item => activeSurveys(item).filter(showsArea)),
         ...(aerial && active && !active.resolvedAt ? activeSurveys(active) : []),
       ].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-      if (exerciseImagery) images.unshift(...exerciseImagery.filter(showsArea));
-      const next = new Map(images.map(image => [`after-survey-${image.url.split("/").at(-1)}`, image]));
+      const rasters = images.flatMap(image => [image,
+        ...(view.getZoom() >= 16 ? (image.detailTiles ?? []).filter(showsArea) : [])]);
+      const next = new Map(rasters.map(image => [`after-survey-${image.url.split("/").at(-1)}`, image]));
       if (next.size === layers.size && [...next.keys()].every(id => layers.has(id))) return;
       for (const id of layers) if (!next.has(id)) {
         view.removeLayer(id);
@@ -286,11 +302,10 @@ export default function WorldMap(props: Props) {
     view.on("moveend", renderSurveys);
     view.on("resize", renderSurveys);
     return () => { view.off("moveend", renderSurveys); view.off("resize", renderSurveys); };
-  }, [locationPicker, props.active, props.aerial, props.incidents, props.recoveryImagery, exerciseImagery, ready]);
+  }, [locationPicker, props.active, props.aerial, props.incidents, props.recoveryImagery, ready]);
 
   return <div className={`world-canvas ${props.picking ? "is-picking" : ""}`}>
     <div ref={host} className="world-map" aria-label="Interactive world map" />
-    {exerciseImagery && !props.active && <span className="world-exercise-badge" role="status">Cincinnati imagery preview</span>}
     {!locationPicker && <button type="button" className="world-basemap" aria-pressed={satellite}
       aria-label="Satellite basemap" onClick={() => setSatellite(value => !value)}>
       {satellite ? <Satellite size={16} aria-hidden /> : <Layers2 size={16} aria-hidden />}
