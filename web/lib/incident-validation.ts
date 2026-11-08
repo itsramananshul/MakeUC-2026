@@ -24,6 +24,7 @@ export const routeInput = z.object({
 });
 export const resolveInput = z.object({ recoverySurveyUrl: z.string().regex(/^\/api\/imagery\/[a-f0-9]{32}$/).nullable() });
 export const roadImportInput = z.object({ center: coordinate.optional() });
+export const aerialScanInput = z.object({ center: coordinate, roadId: z.string().max(120).optional() });
 export const reportInput = z.object({
   id: z.string().regex(/^[A-Za-z0-9_-]{8,80}$/),
   displayName: reporterName,

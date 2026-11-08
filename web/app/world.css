@@ -97,6 +97,7 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
 .world-text:hover { text-decoration: underline; }
 .world-action-row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin: 7px 0; }
 .world-action-row .world-secondary { flex: 1; }
+.aerial-scan-evidence { display: block; max-width: 100%; max-height: 160px; margin-top: 7px; border-radius: 7px; }
 .world-action-row .world-secondary[aria-pressed="true"] { background: #deebfc; color: #0a5caa; }
 .world-hint, .world-attribution { font-size: 12px; color: var(--world-muted); line-height: 1.45; }
 .world-attribution { display: block; margin: 6px 0; }

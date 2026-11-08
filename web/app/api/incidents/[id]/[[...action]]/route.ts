@@ -1,10 +1,11 @@
 import { after } from "next/server";
+import { scanAerialRoads } from "@/lib/aerial-scan";
 import { droneStatus, startDroneJob } from "@/lib/drone";
 import { geographicBounds, midpoint } from "@/lib/geography";
 import { imageryLimit, mosaic } from "@/lib/imagery";
 import { incidentExtent, withinIncident } from "@/lib/incident-types";
 import { authorizeIncident, failJob, getEvidence, getIncident, incidentJob, incidentList, pendingJob, recordJob, removeIncidentImagery, requireActiveIncident, resolveIncident, saveIncidentImage, setIncidentRoads, submitIncidentReport } from "@/lib/incident-store";
-import { bearer, failure, json, reportInput, resolveInput, roadImportInput, routeInput } from "@/lib/incident-validation";
+import { aerialScanInput, bearer, failure, json, reportInput, resolveInput, roadImportInput, routeInput } from "@/lib/incident-validation";
 import { loadRoads } from "@/lib/osm";
 import { RequestError } from "@/lib/store";
 import { readInput } from "@/lib/validation";
@@ -102,6 +103,11 @@ export async function POST(request: Request, context: Context) {
     }
     if (operation === "reports") {
       return json({ incident: submitIncidentReport(id, await readInput(request, reportInput, 1_610_000)) });
+    }
+    if (operation === "imagery/scan") {
+      const incident = requireActiveIncident(getIncident(id));
+      const { center, roadId } = await readInput(request, aerialScanInput);
+      return json(await scanAerialRoads(incident, center, roadId));
     }
     if (operation === "imagery" || operation === "imagery/raw") {
       requireActiveIncident(getIncident(id));

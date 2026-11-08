@@ -280,13 +280,14 @@ function EvidencePhoto({ photo, onChange, onBusy }: {
   </div>;
 }
 
-export function ReportIncident({ incident, road, points, trace, access, onReport }: {
-  incident: Incident; road: Road | null; points: Coordinate[]; trace: boolean; access: string; onReport: (incident: Incident) => void;
+export function ReportIncident({ incident, road, points, trace, access, suggestedHazard, onReport }: {
+  incident: Incident; road: Road | null; points: Coordinate[]; trace: boolean; access: string;
+  suggestedHazard?: boolean; onReport: (incident: Incident) => void;
 }) {
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
   const [condition, setCondition] = useState<"open" | "blocked" | "hazard">(
-    trace && road?.state === "blocked" ? "blocked" : trace && road?.state === "hazard" ? "hazard" : "open",
+    trace && road?.state === "blocked" ? "blocked" : suggestedHazard || (trace && road?.state === "hazard") ? "hazard" : "open",
   );
   const [photo, setPhoto] = useState<string | null>(null);
   const [preparingPhoto, setPreparingPhoto] = useState(false);

@@ -17,6 +17,7 @@ type Props = {
   sidebarVisible?: boolean;
   recoveryImagery?: IncidentImagery[];
   draftPassage?: Coordinate[];
+  aerialFlagIds?: Set<string>;
   navigationPosition?: Coordinate;
   navigationZoom?: number;
   onFreePan?: () => void;
@@ -75,6 +76,9 @@ function addLayers(map: MapInstance, satellite: boolean) {
       "line-opacity": ["case", ["==", ["get", "state"], "unknown"], .57, .95],
       "line-width": ["case", ["==", ["get", "selected"], "yes"], 7, ["==", ["get", "state"], "unknown"], 2, 4],
     } });
+  map.addLayer({ id: "aerial-scan-flags", type: "line", source: "roads", filter: ["==", ["get", "aerialFlag"], true],
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": "#c185ff", "line-width": 4, "line-dasharray": [1.5, 1.5] } });
   map.addLayer({ id: "passage-draft-line", type: "line", source: "passage-draft",
     layout: { "line-cap": "round", "line-join": "round" },
     paint: { "line-color": "#fff", "line-width": 4, "line-dasharray": [1, 1] } });
@@ -236,7 +240,8 @@ export default function WorldMap(props: Props) {
       }));
     set("roads", (active?.roads ?? []).map(road => ({
       type: "Feature", geometry: { type: "LineString", coordinates: roadPoints(road).map(lngLat) },
-      properties: { id: road.id, state: road.state, selected: props.selectedRoad === road.id ? "yes" : "no" },
+      properties: { id: road.id, state: road.state, selected: props.selectedRoad === road.id ? "yes" : "no",
+        aerialFlag: road.state === "unknown" && props.aerial && props.aerialFlagIds?.has(road.id) === true },
     })));
     set("reports", (active?.reports ?? []).flatMap(report =>
       report.location && !report.edgeId ? [point(report.location, { id: report.id })] : []));
@@ -255,7 +260,7 @@ export default function WorldMap(props: Props) {
       }
     }
     set("route", lines);
-  }, [ready, props.incidents, props.active, props.route, props.selectedRoad, props.incidentPreview]);
+  }, [ready, props.incidents, props.active, props.route, props.selectedRoad, props.incidentPreview, props.aerial, props.aerialFlagIds]);
 
   useEffect(() => {
     if (!ready || !map.current) return;

@@ -2,11 +2,11 @@
 
 import {
   ArrowDownUp, ArrowLeft, ArrowUp, Bike, BusFront, CarFront, ChevronRight, CornerUpLeft, CornerUpRight,
-  Crosshair, Flag, Footprints, Globe, Info, KeyRound, Layers3, MapPin, PanelLeft, Plus, Route, Satellite, Search, ShieldAlert, X,
+  Crosshair, Flag, Footprints, Globe, Info, KeyRound, Layers3, LoaderCircle, MapPin, PanelLeft, Plus, Route, Satellite, ScanLine, Search, ShieldAlert, X,
 } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
-import { distanceMeters, incidentExtent, withinIncident, type Coordinate, type GeographicBounds, type Incident, type IncidentImagery, type IncidentRoute, type IncidentSummary, type Place, type TravelMode } from "@/lib/incident-types";
+import { distanceMeters, incidentExtent, withinIncident, type AerialScan, type Coordinate, type GeographicBounds, type Incident, type IncidentImagery, type IncidentRoute, type IncidentSummary, type Place, type TravelMode } from "@/lib/incident-types";
 import { crossesIncident } from "@/lib/route-boundaries";
 import { navigationLimits } from "@/lib/navigation";
 import { fetchJson, incidentPath, postJson } from "@/lib/world-client";
@@ -21,6 +21,8 @@ type ModalKind = "create" | "access" | "report" | "survey" | "remove-aerial" | "
 type Stop = "start" | "destination";
 type TripPoint = Coordinate & { label: string; detail?: string };
 const labels = { unknown: "Unverified", open: "Reported open", blocked: "Blocked", hazard: "Hazard", conflict: "Disputed" };
+const observationLabels = { rubble: "Possible rubble", water: "Possible flooding", both: "Possible rubble and flooding",
+  unclear: "Unclear from above", none_visible: "No visible obstruction" };
 const earth = { latitude: 24, longitude: 0 };
 const accessStorage = (id: string) => `aftermap.access.${id}`;
 const getMessage = (error: unknown) => error instanceof Error ? error.message : "Something went wrong.";
@@ -77,6 +79,8 @@ export default function WorldApp() {
   const [aerial, setAerial] = useState(true);
   const [access, setAccess] = useState("");
   const [importing, setImporting] = useState(false);
+  const [scanningAerial, setScanningAerial] = useState(false);
+  const [aerialScan, setAerialScan] = useState<(AerialScan & { incidentId: string }) | null>(null);
   const [sidebar, setSidebar] = useState(true);
   const [sheet, setSheet] = useState(0);
   const [mobileSearch, setMobileSearch] = useState(false);
@@ -88,6 +92,13 @@ export default function WorldApp() {
   const [message, setMessage] = useState("");
   const [followNavigation, setFollowNavigation] = useState(true);
   const selectedRoad = active?.roads.find(road => road.id === roadId) ?? null;
+  const visibleScan = aerialScan && active && !active.resolvedAt &&
+    aerialScan.incidentId === active.id && aerialScan.surveyUrl === active.imagery?.url ? aerialScan : null;
+  const hazardFindings = visibleScan?.findings.filter(item =>
+    item.obstruction === "rubble" || item.obstruction === "water" || item.obstruction === "both") ?? [];
+  const selectedFinding = hazardFindings.find(item => item.roadId === roadId);
+  const aerialFlagIds = useMemo(() => new Set(visibleScan?.findings.flatMap(item =>
+    item.obstruction !== "none_visible" && item.obstruction !== "unclear" ? [item.roadId] : [])), [visibleScan]);
   const checkedRoute = useMemo(() => {
     if (!route || !route.coordinates.length) return route;
     const options = route.options?.filter(option => option.unverifiedSegments?.length || !crossesIncident(option.coordinates, incidents));
@@ -309,6 +320,17 @@ export default function WorldApp() {
       setMessage(`Imported OpenStreetMap passages. ${incident.roadCount.toLocaleString()} segments in this incident.`);
     } catch (error) { setError(getMessage(error)); }
     finally { setImporting(false); }
+  }
+  async function scanImagery() {
+    if (!active?.imagery || scanningAerial) return;
+    setScanningAerial(true); setError("");
+    try {
+      const scan = await postJson<AerialScan>(incidentPath(active.id, "imagery/scan"),
+        { center: selectedRoad?.from ?? camera.center, roadId: selectedRoad?.id }, access);
+      setAerialScan({ ...scan, incidentId: active.id });
+      setAerial(true);
+    } catch (error) { setError(getMessage(error)); }
+    finally { setScanningAerial(false); }
   }
   function startTrip(point?: Place) {
     if (!tripOpen) setMode((active && !active.resolvedAt) || (point && incidents.some(incident => withinIncident(point, incident))) ? "walking" : "driving");
@@ -583,6 +605,36 @@ export default function WorldApp() {
             <button className="world-secondary" type="button" onClick={() => needAccess(() => setModal("survey"))}><Layers3 size={16} /> Add imagery</button>
           </div>
           {aerial && active.imagery && <small className="world-attribution">{active.imagery.source}</small>}
+          {active.imagery && <>
+            <div className="world-action-row">
+              <button className="world-secondary" type="button" disabled={scanningAerial}
+                onClick={() => needAccess(() => void scanImagery())}>
+                {scanningAerial ? <LoaderCircle className="incident-spinner" size={16} aria-hidden /> : <ScanLine size={16} aria-hidden />} Scan aerial imagery
+              </button>
+            </div>
+            {!visibleScan && !scanningAerial && <p className="world-hint">OpenAI checks up to six nearby road segments.</p>}
+          </>}
+          {scanningAerial && <p className="world-hint" role="status">Checking nearby roads for visible obstructions…</p>}
+          {visibleScan && <div className="aerial-scan">
+            <h2 className="reports-title">Aerial scan</h2>
+            <p className="world-hint" role="status">{hazardFindings.length} flagged · {visibleScan.findings.length} scanned. Purple dashes mark unverified roads flagged for review.</p>
+            <ul className="world-reports">{visibleScan.findings.map(finding => {
+              const road = active.roads.find(item => item.id === finding.roadId);
+              if (!road) return null;
+              return <li key={road.id}>
+                <div><strong>{road.label}</strong><small>{labels[road.state]}</small></div>
+                <small>{observationLabels[finding.obstruction]}</small>
+                <p>{finding.observation}</p>
+                {finding.image && <button className="world-text" type="button" onClick={() => {
+                  selectRoad(road.id); setFocus({ bounds: routeBounds([road.from, ...(road.via ?? []), road.to]) });
+                }}>View segment</button>}
+                {finding.image && roadId === road.id && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img className="aerial-scan-evidence" src={`data:image/jpeg;base64,${finding.image}`} alt={`Aerial crop with ${road.label} marked in cyan`} />
+                )}
+              </li>;
+            })}</ul>
+          </div>}
           <div className="world-action-row">
             <button className="world-secondary" type="button" disabled={importing} onClick={() => needAccess(() => void importStreets())}>{importing ? "Importing…" : "Import roads"}</button>
             <button className="world-secondary" type="button" onClick={() => setModal("access")}><KeyRound size={15} /> Access key</button>
@@ -646,7 +698,7 @@ export default function WorldApp() {
         navigationZoom={liveTrip && followNavigation ? navigationLimits[liveTrip.mode].zoom : undefined}
         onFreePan={() => setFollowNavigation(false)}
         start={tripOpen && !liveTrip ? start : null} destination={tripOpen ? destination : place}
-        selectedRoad={roadId} aerial={aerial} picking={!!picking} draftPassage={picking === "trace" ? points : undefined} sidebarVisible={sidebar} onCamera={setCamera}
+        selectedRoad={roadId} aerial={aerial} picking={!!picking} draftPassage={picking === "trace" ? points : undefined} aerialFlagIds={aerialFlagIds} sidebarVisible={sidebar} onCamera={setCamera}
         onPoint={choosePoint} onRoad={selectRoad} onIncident={chooseIncident} onReport={selectReport} />
       {!sidebar && <button className="world-restore circle-button" aria-label="Show sidebar" onClick={() => setSidebar(true)}><PanelLeft size={18} /></button>}
       {picking && <div className={picking === "trace" ? "world-picking world-tracing" : "world-picking"}><span role="status">{pickLabel}</span>
@@ -665,7 +717,8 @@ export default function WorldApp() {
       <AccessKey current={access} onSave={key => { changeAccess(key); setModal(null); }} />
     </Modal>}
     {modal === "report" && active && <Modal title="Confirm field report" description={tracing ? "Confirm the condition along the traced passage." : selectedRoad?.label ?? (points.length === 2 ? "New connection between the selected points." : "Observation at the selected location.")} onClose={() => { setModal(null); setTracing(false); setPoints([]); }}>
-      <ReportIncident incident={active} road={selectedRoad} points={points} trace={tracing} access={access} onReport={next => {
+      <ReportIncident incident={active} road={selectedRoad} points={points} trace={tracing} access={access}
+        suggestedHazard={!tracing && !!selectedFinding && selectedRoad?.state === "unknown"} onReport={next => {
         applyIncident(next); setModal(null); setPoints([]); setTracing(false); setMessage("Field report recorded.");
       }} />
     </Modal>}

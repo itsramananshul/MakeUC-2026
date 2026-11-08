@@ -8,6 +8,11 @@ export type FieldReport = {
   location?: Coordinate; evidenceUrl?: string;
 };
 export type SurveyRaster = { url: string; bounds: GeographicBounds };
+export type AerialFinding = {
+  roadId: string; obstruction: "rubble" | "water" | "both" | "unclear" | "none_visible";
+  observation: string; image?: string;
+};
+export type AerialScan = { surveyUrl: string; findings: AerialFinding[] };
 export type IncidentImagery = SurveyRaster & { source: string; timestamp: string; detailTiles?: SurveyRaster[] };
 export type IncidentSummary = {
   id: string; name: string; kind: "incident"; bounds: GeographicBounds; imagery: IncidentImagery | null; surveys?: IncidentImagery[];
