@@ -1,7 +1,7 @@
 import { booleanIntersects } from "@turf/boolean-intersects";
 import { polygon, lineString } from "@turf/helpers";
 import { boundsTuple, distanceMeters, lngLat, within, type Coordinate, type GeographicBounds,
-  type IncidentRoute, type IncidentSummary, type Place, type Road } from "./incident-types";
+  type IncidentRoute, type IncidentSummary, type Place, type Road, type RouteOption, type TravelMode } from "./incident-types";
 import { RequestError } from "./store";
 
 const userAgent = "AFTERMAP/1.0 (+https://aftermap-makeuc.vercel.app)";
@@ -96,27 +96,64 @@ function incidentPolygon(bounds: GeographicBounds) {
 }
 
 let lastRoute = 0;
-export async function standardRoute(origin: Coordinate, destination: Coordinate, incidents: IncidentSummary[]): Promise<IncidentRoute> {
-  const unset: IncidentRoute = { status: "unavailable", coordinates: [], distanceMeters: 0, reason: "No walking route was found." };
-  if (!process.env.OSRM_FOOT_URL && Date.now() - lastRoute < 1000) {
+const routingProfiles = {
+  driving: { path: "car", origin: () => process.env.OSRM_CAR_URL },
+  walking: { path: "foot", origin: () => process.env.OSRM_FOOT_URL },
+  cycling: { path: "bike", origin: () => process.env.OSRM_BIKE_URL },
+};
+type RoutingStep = {
+  distance: number; name: string; ref?: string; destinations?: string;
+  maneuver: { type: string; modifier?: string; exit?: number };
+};
+type RoutingOption = { distance: number; duration: number; geometry: { coordinates: [number, number][] }; legs: { steps: RoutingStep[] }[] };
+
+function describeStep({ maneuver, name, ref, destinations }: RoutingStep) {
+  const { type, modifier, exit } = maneuver;
+  const road = name || ref || destinations;
+  if (type === "arrive") return "Arrive at the destination";
+  if (type === "roundabout" || type === "rotary") {
+    return exit ? `Take exit ${exit} at the roundabout${road ? ` onto ${road}` : ""}` : "Enter the roundabout";
+  }
+  const direction = modifier && modifier !== "straight" ? ` ${modifier === "uturn" ? "back" : modifier}` : "";
+  const action = type === "depart" ? "Start" : type === "merge" ? `Merge${direction}` :
+    type === "fork" ? `Keep${direction}` : type === "on ramp" || type === "off ramp" ? "Take the ramp" :
+      type === "turn" && direction ? `Turn${direction}` : `Continue${direction}`;
+  return road ? `${action} onto ${road}` : action;
+}
+
+export async function standardRoute(origin: Coordinate, destination: Coordinate, incidents: IncidentSummary[],
+  mode: TravelMode): Promise<IncidentRoute> {
+  const unset: IncidentRoute = { status: "unavailable", coordinates: [], distanceMeters: 0,
+    reason: `No ${mode} route connects these points. Check the two locations or try another travel mode.` };
+  if (distanceMeters(origin, destination) < 1) return { ...unset, reason: "Choose a different destination." };
+  const profile = routingProfiles[mode];
+  const customOrigin = profile.origin();
+  if (!customOrigin && Date.now() - lastRoute < 1000) {
     throw new RequestError("Wait briefly before requesting another route.", 429);
   }
   lastRoute = Date.now();
   const pair = `${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}`;
-  const base = (process.env.OSRM_FOOT_URL || "https://routing.openstreetmap.de/routed-foot").replace(/\/$/, "");
-  const url = `${base}/route/v1/driving/${pair}?overview=full&geometries=geojson&alternatives=true`;
+  const base = (customOrigin || `https://routing.openstreetmap.de/routed-${profile.path}`).replace(/\/$/, "");
+  const url = `${base}/route/v1/driving/${pair}?overview=full&geometries=geojson&alternatives=2&steps=true&radiuses=2000;2000`;
   try {
     const response = await fetch(url, {
       signal: AbortSignal.timeout(10_000), headers: { "User-Agent": userAgent, Referer: "https://aftermap-makeuc.vercel.app/" },
     });
-    const data = await response.json() as { code?: string; routes?: { distance: number; geometry: { coordinates: [number, number][] } }[] };
+    const data = await response.json() as { code?: string; routes?: RoutingOption[] };
     if (!response.ok && data.code !== "NoRoute" && data.code !== "NoSegment") throw new Error("Router failed");
     const routes = data.routes ?? [];
     if (!routes.length) return unset;
-    const safe = routes.find(route => route.geometry.coordinates.length >= 2 &&
+    const safe = routes.filter(route => route.geometry.coordinates.length >= 2 &&
       !incidents.some(incident => booleanIntersects(lineString(route.geometry.coordinates), incidentPolygon(incident.bounds))));
-    if (!safe) return { ...unset, reason: "Available routes pass through an incident. Choose points on its reported passage network." };
-    return { status: "complete", coordinates: safe.geometry.coordinates.map(([longitude, latitude]) => ({ latitude, longitude })),
-      distanceMeters: Math.round(safe.distance), reason: "Standard walking route outside mapped incidents." };
-  } catch { throw new RequestError("The walking route service is temporarily unavailable.", 503); }
+    if (!safe.length) return { ...unset, reason: "Available routes pass through an incident. Choose points on its reported passage network." };
+    const options: RouteOption[] = safe.map(route => ({
+      distanceMeters: Math.round(route.distance), durationSeconds: Math.round(route.duration),
+      coordinates: route.geometry.coordinates.map(([longitude, latitude]) => ({ latitude, longitude })),
+      steps: route.legs.flatMap(leg => leg.steps.map(step => ({
+        instruction: describeStep(step), distanceMeters: Math.round(step.distance),
+      }))),
+    }));
+    return { status: "complete", distanceMeters: options[0].distanceMeters, coordinates: options[0].coordinates,
+      reason: `Standard ${mode} route outside mapped incidents.`, options };
+  } catch { throw new RequestError("The route service is temporarily unavailable. Try again shortly.", 503); }
 }

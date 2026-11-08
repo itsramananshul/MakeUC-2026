@@ -7,14 +7,15 @@ import { readInput } from "@/lib/validation";
 export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
-    const { origin, destination } = await readInput(request, routeInput);
+    const { origin, destination, mode } = await readInput(request, routeInput);
     const incidents = incidentList();
     const active = incidents.find(incident => within(origin, incident.bounds) && within(destination, incident.bounds));
-    if (active) return json(incidentRoute(getIncident(active.id), origin, destination));
+    if (active && mode === "walking") return json(incidentRoute(getIncident(active.id), origin, destination));
     if (incidents.some(incident => within(origin, incident.bounds) || within(destination, incident.bounds))) {
       return json({ status: "unavailable", coordinates: [], distanceMeters: 0,
-        reason: "This trip crosses an incident boundary. Select the incident and check its reported passages." });
+        reason: active ? "Switch to walking to route along reported passages in this incident." :
+          "This trip crosses an incident boundary. Open the incident to check its reported passages." });
     }
-    return json(await standardRoute(origin, destination, incidents));
+    return json(await standardRoute(origin, destination, incidents, mode));
   } catch (error) { return failure(error); }
 }
