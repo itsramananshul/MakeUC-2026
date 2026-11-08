@@ -105,7 +105,7 @@ export default function WorldMap(props: Props) {
       container: host.current, style,
       center: initial && "point" in initial ? lngLat(initial.point) : [0, 24],
       zoom: initial && "point" in initial ? initial.zoom ?? 14 : 1.65, maxZoom: 21,
-      minZoom: 1, maxBounds: [[-180, -85], [180, 85]], renderWorldCopies: false,
+      minZoom: 1, renderWorldCopies: false,
       attributionControl: { compact: true }, pitchWithRotate: false,
     }); } catch {
       setMessage("The world map requires WebGL. Enable it in your browser and refresh."); return;
@@ -120,6 +120,7 @@ export default function WorldMap(props: Props) {
     view.addControl(new NavigationControl({ visualizePitch: false }), "top-right");
     view.addControl(new ScaleControl({ unit: "metric" }), "bottom-right");
     view.on("load", () => {
+      view.setMaxBounds([[-180, -85], [180, 85]]);
       addLayers(view, inputs.current.incidentPreview === undefined);
       setReady(true);
       setMessage("");
