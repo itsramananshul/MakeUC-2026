@@ -2,6 +2,7 @@ import { UndirectedGraph } from "graphology";
 import { bidirectional, singleSource } from "graphology-shortest-path/dijkstra";
 import { nearestPoint } from "./geography";
 import { coordinateKey, distanceMeters, roadLegs, withinIncident, type Coordinate, type Incident, type IncidentRoute, type IncidentSummary, type Road } from "./incident-types";
+import { crossesReportedClosure } from "./incident-route-assessment";
 import { crossesIncident } from "./route-boundaries";
 
 type Node = Coordinate & { label: string };
@@ -67,7 +68,15 @@ function findRoute(incident: Incident, origin: Coordinate, destination: Coordina
     }
   }
   const snappingRoads = preview ? usable : segments;
-  const start = project(origin, snappingRoads), finish = project(destination, snappingRoads);
+  const openRoads = segments.filter(road => road.state === "open");
+  function snapEndpoint(point: Coordinate, limit: number) {
+    const nearest = project(point, snappingRoads);
+    if (preview || nearest?.road.state === "open") return nearest;
+    const open = project(point, openRoads);
+    if (!open || open.gap > limit || crossesReportedClosure(point, open.point, segments)) return nearest;
+    return open;
+  }
+  const start = snapEndpoint(origin, 20), finish = snapEndpoint(destination, 15);
   if (!start || (!preview && start.road.state !== "open") || start.gap > 20) {
     return noRoute("The starting point is not close enough to a reported open passage.");
   }

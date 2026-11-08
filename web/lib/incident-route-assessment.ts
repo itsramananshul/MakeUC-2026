@@ -24,6 +24,10 @@ function hitsClosure(from: Coordinate, to: Coordinate, closures: ReturnType<type
   return closures.some(({ road, interior }) => booleanIntersects(segment, interior) || followsClosedRoad(from, to, road));
 }
 
+export function crossesReportedClosure(from: Coordinate, to: Coordinate, roads: Road[]) {
+  return distanceMeters(from, to) > .01 && hitsClosure(from, to, closureSegments(roads));
+}
+
 export function avoidClosures(incident: Incident): Incident {
   const closures = closureSegments(incident.roads);
   if (!closures.length) return incident;
