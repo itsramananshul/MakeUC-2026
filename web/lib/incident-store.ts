@@ -1,4 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { publishIncidentUpdate } from "./incident-events";
 import { database, RequestError } from "./store";
 import {
   coordinateKey, distanceMeters, within, type Coordinate, type FieldReport, type GeographicBounds,
@@ -9,6 +10,7 @@ type ReportInput = Omit<FieldReport, "at" | "evidenceUrl"> & {
   from?: Coordinate; to?: Coordinate; photoBase64?: string; confirmed: true;
 };
 type InitialObservation = Pick<ReportInput, "displayName" | "note" | "photoBase64">;
+type StoredIncident = Incident & { unpublishedSurveys?: IncidentImagery[] };
 
 const hash = (value: string) => createHash("sha256").update(value).digest();
 export function keyMatches(candidate: string, expected: string) {
@@ -33,8 +35,8 @@ function init() {
   return db;
 }
 
-function summary(incident: Incident): IncidentSummary {
-  const { roads, reports, ...result } = incident;
+function summary(incident: StoredIncident): IncidentSummary {
+  const { roads, reports, unpublishedSurveys, ...result } = incident;
   return { ...result, roadCount: roads.length };
 }
 export function incidentList(): IncidentSummary[] {
@@ -45,10 +47,16 @@ export function publishedRecoveryImagery(): IncidentImagery[] {
   return init().prepare("SELECT json_extract(details, '$.recoveryImagery') AS image FROM incidents WHERE image IS NOT NULL").all()
     .map(row => JSON.parse(row.image as string) as IncidentImagery);
 }
-export function getIncident(id: string): Incident {
+function loadIncident(id: string): StoredIncident {
   const row = init().prepare("SELECT details FROM incidents WHERE id = ?").get(id);
   if (!row) throw new RequestError("This incident was not found.", 404);
-  return JSON.parse(row.details as string) as Incident;
+  return JSON.parse(row.details as string) as StoredIncident;
+}
+function publicIncident({ unpublishedSurveys, ...incident }: StoredIncident): Incident {
+  return incident;
+}
+export function getIncident(id: string): Incident {
+  return publicIncident(loadIncident(id));
 }
 export function authorizeIncident(id: string, key: string) {
   const row = init().prepare("SELECT key_hash FROM incidents WHERE id = ?").get(id);
@@ -91,25 +99,30 @@ export function createIncident(name: string, bounds: GeographicBounds, observati
     db.exec("ROLLBACK");
     throw error;
   }
+  publishIncidentUpdate(incident.id);
   return { incident, key };
 }
 
-function changeIncident(id: string, mutate: (incident: Incident) => boolean) {
+function changeIncident(id: string, mutate: (incident: StoredIncident) => boolean) {
   const db = init();
+  let incident: StoredIncident;
+  let changed: boolean;
   db.exec("BEGIN IMMEDIATE");
   try {
-    const incident = getIncident(id);
-    if (mutate(incident)) {
+    incident = loadIncident(id);
+    changed = mutate(incident);
+    if (changed) {
       incident.version += 1;
       incident.roadCount = incident.roads.length;
       db.prepare("UPDATE incidents SET details = ? WHERE id = ?").run(JSON.stringify(incident), id);
     }
     db.exec("COMMIT");
-    return incident;
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;
   }
+  if (changed) publishIncidentUpdate(id);
+  return publicIncident(incident);
 }
 export function requireActiveIncident(incident: Incident) {
   if (incident.resolvedAt) throw new RequestError("This incident has been resolved.", 409);
@@ -157,14 +170,35 @@ export function saveIncidentImage(id: string, bytes: Buffer, data: Omit<Incident
     const db = database();
     db.prepare("INSERT INTO imagery VALUES (?, ?)").run(assetId, bytes);
     const surveys = incident.surveys ?? (incident.imagery ? [incident.imagery] : []);
+    const unpublished = incident.unpublishedSurveys ?? [];
     const newest = { ...data, url: `/api/imagery/${assetId}` };
-    if (surveys.length >= 12) {
-      const oldest = surveys.shift();
+    if (surveys.length + unpublished.length >= 12) {
+      const oldest = unpublished.shift() ?? surveys.shift();
       if (oldest) db.prepare("DELETE FROM imagery WHERE id = ?").run(oldest.url.split("/").at(-1)!);
     }
     incident.surveys = [...surveys, newest];
     incident.imagery = newest;
     if (jobId) db.prepare("UPDATE incident_jobs SET state = 'complete' WHERE incident_id = ? AND id = ?").run(id, jobId);
+    return true;
+  });
+}
+
+export function removeIncidentImagery(id: string) {
+  return changeIncident(id, incident => {
+    if (incident.resolvedAt) {
+      if (!incident.recoveryImagery) return false;
+      delete incident.recoveryImagery;
+      return true;
+    }
+    if (!incident.imagery) return false;
+    const job = pendingJob(id);
+    if (job && Date.now() - job.created_at < 30 * 60_000) {
+      throw new RequestError("Wait for the aerial survey to finish before removing imagery.", 409);
+    }
+    if (job) failJob(id, job.id);
+    incident.unpublishedSurveys = [...(incident.unpublishedSurveys ?? []), ...(incident.surveys ?? [incident.imagery])];
+    incident.imagery = null;
+    incident.surveys = [];
     return true;
   });
 }

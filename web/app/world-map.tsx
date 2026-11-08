@@ -16,7 +16,10 @@ type Props = {
   onReport?: (id: string) => void;
   sidebarVisible?: boolean;
   recoveryImagery?: IncidentImagery[];
-  exerciseImagery?: IncidentImagery;
+  exerciseImagery?: IncidentImagery[];
+  navigationPosition?: Coordinate;
+  navigationZoom?: number;
+  onFreePan?: () => void;
   incidentPreview?: { center: Coordinate; bounds: GeographicBounds } | null;
 };
 const style = "https://tiles.openfreemap.org/styles/liberty";
@@ -85,8 +88,9 @@ function addLayers(map: MapInstance, satellite: boolean) {
     "circle-color": "#e67429", "circle-stroke-color": "#fff", "circle-stroke-width": 2.5, "circle-radius": 8,
   } });
   map.addLayer({ id: "trip-pins", type: "circle", source: "markers", paint: {
-    "circle-color": ["match", ["get", "kind"], "start", "#2678ef", "incident", "#d46a20", "#d94050"],
-    "circle-stroke-color": "#fff", "circle-stroke-width": 3, "circle-radius": 8,
+    "circle-color": ["match", ["get", "kind"], "position", "#087bfb", "start", "#2678ef", "incident", "#d46a20", "#d94050"],
+    "circle-stroke-color": "#fff", "circle-stroke-width": 3,
+    "circle-radius": ["case", ["==", ["get", "kind"], "position"], 10, 8],
   } });
 }
 
@@ -136,6 +140,7 @@ export default function WorldMap(props: Props) {
       const center = view.getCenter().wrap();
       inputs.current.onCamera({ center: { latitude: center.lat, longitude: center.lng }, zoom: view.getZoom() });
     });
+    view.on("dragstart", () => inputs.current.onFreePan?.());
     view.on("click", event => {
       const current = inputs.current;
       const location = event.lngLat.wrap();
@@ -200,6 +205,15 @@ export default function WorldMap(props: Props) {
 
   useEffect(() => {
     const view = map.current;
+    if (!ready || !view || !props.navigationPosition || props.navigationZoom === undefined) return;
+    view.easeTo({
+      center: lngLat(props.navigationPosition), zoom: Math.max(view.getZoom(), props.navigationZoom),
+      duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 360,
+    });
+  }, [props.navigationPosition, props.navigationZoom, ready]);
+
+  useEffect(() => {
+    const view = map.current;
     if (!view || !ready) return;
     const set = (id: string, features: Feature[]) => (view.getSource(id) as GeoJSONSource).setData(collection(features));
     const active = props.active?.resolvedAt ? null : props.active;
@@ -220,18 +234,24 @@ export default function WorldMap(props: Props) {
       type: "Feature", geometry: { type: "LineString", coordinates: props.route.coordinates.map(lngLat) },
       properties: { state: props.route.status },
     }] : []);
-    set("markers", [
+  }, [ready, props.incidents, props.active, props.route, props.selectedRoad, props.incidentPreview]);
+
+  useEffect(() => {
+    if (!ready || !map.current) return;
+    const markers = map.current.getSource("markers") as GeoJSONSource;
+    markers.setData(collection([
       ...(props.start ? [point(props.start, { kind: "start" })] : []),
       ...(props.destination && (!exerciseImagery || props.active) ? [point(props.destination, { kind: "destination" })] : []),
+      ...(props.navigationPosition ? [point(props.navigationPosition, { kind: "position" })] : []),
       ...(props.incidentPreview ? [point(props.incidentPreview.center, { kind: "incident" })] : []),
-    ]);
-  }, [ready, props.incidents, props.active, props.route, props.start, props.destination, props.selectedRoad, props.incidentPreview, exerciseImagery]);
+    ]));
+  }, [ready, props.start, props.destination, props.active, props.incidentPreview, props.navigationPosition, exerciseImagery]);
 
   useEffect(() => {
     if (!map.current || !ready || locationPicker) return;
     const view: MapInstance = map.current;
-    const surveyBefore = view.getLayer(satelliteRoadLayer(satelliteRoads[0])) ? satelliteRoadLayer(satelliteRoads[0]) :
-      view.getLayer("waterway_line_label") ? "waterway_line_label" : "incident-boundary-fill";
+    // Keep the map's place and street names above the new imagery.
+    const surveyBefore = view.getLayer("waterway_line_label") ? "waterway_line_label" : "incident-boundary-fill";
     const { active, aerial, incidents, recoveryImagery } = props;
     const layers = surveyLayers.current;
     function renderSurveys() {
@@ -245,7 +265,7 @@ export default function WorldMap(props: Props) {
         ...incidents.filter(item => item.id !== active?.id).flatMap(item => activeSurveys(item).filter(showsArea)),
         ...(aerial && active && !active.resolvedAt ? activeSurveys(active) : []),
       ].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-      if (exerciseImagery && showsArea(exerciseImagery)) images.unshift(exerciseImagery);
+      if (exerciseImagery) images.unshift(...exerciseImagery.filter(showsArea));
       const next = new Map(images.map(image => [`after-survey-${image.url.split("/").at(-1)}`, image]));
       if (next.size === layers.size && [...next.keys()].every(id => layers.has(id))) return;
       for (const id of layers) if (!next.has(id)) {
@@ -254,13 +274,12 @@ export default function WorldMap(props: Props) {
         layers.delete(id);
       }
       for (const [id, image] of next) {
-        const before = image.url === exerciseImagery?.url ? "incident-boundary-fill" : surveyBefore;
         if (!layers.has(id)) {
           const [w, s, e, n] = boundsTuple(image.bounds);
           view.addSource(id, { type: "image", url: image.url, coordinates: [[w, n], [e, n], [e, s], [w, s]] });
-          view.addLayer({ id, type: "raster", source: id, paint: { "raster-fade-duration": 0 } }, before);
+          view.addLayer({ id, type: "raster", source: id, paint: { "raster-fade-duration": 0 } }, surveyBefore);
           layers.add(id);
-        } else view.moveLayer(id, before);
+        } else view.moveLayer(id, surveyBefore);
       }
     }
     renderSurveys();

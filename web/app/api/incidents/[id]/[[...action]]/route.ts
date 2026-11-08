@@ -3,7 +3,7 @@ import { droneStatus, startDroneJob } from "@/lib/drone";
 import { geographicBounds } from "@/lib/geography";
 import { imageryLimit, mosaic } from "@/lib/imagery";
 import { incidentRoute } from "@/lib/incident-route";
-import { authorizeIncident, failJob, getEvidence, getIncident, incidentJob, incidentList, pendingJob, recordJob, requireActiveIncident, resolveIncident, saveIncidentImage, setIncidentRoads, submitIncidentReport } from "@/lib/incident-store";
+import { authorizeIncident, failJob, getEvidence, getIncident, incidentJob, incidentList, pendingJob, recordJob, removeIncidentImagery, requireActiveIncident, resolveIncident, saveIncidentImage, setIncidentRoads, submitIncidentReport } from "@/lib/incident-store";
 import { bearer, failure, json, reportInput, resolveInput, routeInput } from "@/lib/incident-validation";
 import { loadRoads } from "@/lib/osm";
 import { RequestError } from "@/lib/store";
@@ -112,5 +112,14 @@ export async function POST(request: Request, context: Context) {
       return json({ incident });
     }
     return json({ error: "Unknown incident endpoint." }, 404);
+  } catch (error) { return failure(error); }
+}
+
+export async function DELETE(request: Request, context: Context) {
+  const { id, action = [] } = await context.params;
+  try {
+    if (action.join("/") !== "imagery") return json({ error: "Unknown incident endpoint." }, 404);
+    authorizeIncident(id, bearer(request));
+    return json({ incident: removeIncidentImagery(id) });
   } catch (error) { return failure(error); }
 }

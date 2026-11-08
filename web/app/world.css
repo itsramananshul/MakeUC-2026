@@ -144,6 +144,11 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
 .world-route-result.partial { background: #fff0d5; }
 .world-route-result.unavailable { background: #e9edef; }
 .world-route-result small { color: #405360; }
+.navigation-start { min-height: 44px; margin-top: 13px; width: 100%; }
+.live-navigation .tray-header { margin-bottom: 6px; }
+.navigation-destination { margin: 0 0 13px; color: var(--world-muted); overflow-wrap: anywhere; }
+.live-navigation .world-route-result { padding: 13px; }
+.live-navigation .world-route-result strong { font-size: 18px; letter-spacing: -.02em; }
 .selected-road { border-radius: 9px; padding: 8px; background: #e8edf1; display: grid; gap: 5px; margin: 8px 0; }
 .selected-road > div { display: flex; gap: 5px; justify-content: space-between; }
 .selected-road small { color: var(--world-muted); }
@@ -346,6 +351,9 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
   }
   .world-main-map:has(> .world-sidebar[data-sheet="0"]) { --mobile-sheet-size: var(--mobile-sheet-compact); }
   .world-main-map:has(> .world-sidebar[data-sheet="1"]) { --mobile-sheet-size: 53dvh; }
+  .world-main-map:has(> .world-sidebar[data-sheet="1"][data-navigating="true"]) {
+    --mobile-sheet-size: min(52dvh, calc(233px + env(safe-area-inset-bottom, 0px)));
+  }
   .world-main-map:has(> .world-sidebar[data-sheet="2"]) {
     --mobile-sheet-size: max(92px, calc(100dvh - var(--mobile-keyboard-inset) - max(38px, env(safe-area-inset-top, 0px))));
   }

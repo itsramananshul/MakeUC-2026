@@ -23,7 +23,7 @@ function supportedCRS(keys: ReturnType<Awaited<ReturnType<Awaited<ReturnType<typ
   throw new RequestError("Use a GeoTIFF in WGS 84, Web Mercator, or WGS 84 UTM.");
 }
 
-async function loadSource(buffer: ArrayBuffer): Promise<Source> {
+async function loadSource(buffer: ArrayBuffer, maxDimension: number): Promise<Source> {
   let image;
   try { image = await (await fromArrayBuffer(buffer)).getImage(); }
   catch { throw new RequestError("One of the files is not a readable GeoTIFF."); }
@@ -52,14 +52,15 @@ async function loadSource(buffer: ArrayBuffer): Promise<Source> {
   if (!bounds.every(Number.isFinite) || bounds[2] <= bounds[0] || bounds[3] <= bounds[1]) {
     throw new RequestError("The orthomosaic has invalid geographic bounds.");
   }
-  const downsample = Math.max(1, originalWidth / 1800, originalHeight / 1800);
+  const downsample = Math.max(1, originalWidth / maxDimension, originalHeight / maxDimension);
   const width = Math.ceil(originalWidth / downsample);
   const height = Math.ceil(originalHeight / downsample);
   const data = await image.readRGB({ width, height, interleave: true, enableAlpha: true }) as Uint8Array;
   const channels = data.length / (width * height);
   if (channels !== 3 && channels !== 4) throw new RequestError("Use an RGB or grayscale GeoTIFF.");
   return {
-    width, height, data, channels, origin, bounds, fromMap: proj4(WEB_MERCATOR, crs),
+    width, height, data, channels, origin, bounds,
+    fromMap: crs === WEB_MERCATOR ? { forward: point => point } : proj4(WEB_MERCATOR, crs),
     resolution: [resolution[0] * originalWidth / width, resolution[1] * originalHeight / height],
     noData: image.getGDALNoData(),
   };
@@ -77,7 +78,7 @@ export async function mosaic(files: ArrayBuffer[], alignLegacy = true) {
     throw new RequestError("Choose one to eight GeoTIFFs under 72 MB total.");
   }
   const sources: Source[] = [];
-  for (const file of files) sources.push(await loadSource(file));
+  for (const file of files) sources.push(await loadSource(file, alignLegacy ? 1800 : 3072));
   const coverage = union(sources);
   const aligned = alignLegacy && coverage[0] < DRILL_BOUNDS[2] && coverage[2] > DRILL_BOUNDS[0] &&
     coverage[1] < DRILL_BOUNDS[3] && coverage[3] > DRILL_BOUNDS[1] &&
@@ -85,8 +86,12 @@ export async function mosaic(files: ArrayBuffer[], alignLegacy = true) {
   const bounds = aligned ? DRILL_BOUNDS : coverage;
   const [west, south, east, north] = bounds;
   const dx = east - west, dy = north - south;
-  const width = Math.max(1, Math.round(1500 * Math.min(1, dx / dy)));
-  const height = Math.max(1, Math.round(1500 * Math.min(1, dy / dx)));
+  const density = (source: Source) => Math.max(source.width / (source.bounds[2] - source.bounds[0]),
+    source.height / (source.bounds[3] - source.bounds[1]));
+  if (!alignLegacy) sources.sort((a, b) => density(b) - density(a));
+  const size = alignLegacy ? 1500 : Math.min(3072, Math.max(dx, dy) * density(sources[0]));
+  const width = Math.max(1, Math.round(size * Math.min(1, dx / dy)));
+  const height = Math.max(1, Math.round(size * Math.min(1, dy / dx)));
   const pixels = Buffer.alloc(width * height * 4);
   let painted = 0;
   for (let y = 0; y < height; y++) {

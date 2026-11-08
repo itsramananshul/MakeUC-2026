@@ -56,6 +56,32 @@ export function ResolveIncident({ incident, access, onResolve }: {
   </form>;
 }
 
+export function RemoveAerial({ incident, access, onRemove }: {
+  incident: Incident; access: string; onRemove: (incident: Incident) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  async function remove(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const result = await fetchJson<{ incident: Incident }>(incidentPath(incident.id, "imagery"), {
+        method: "DELETE", headers: { Authorization: `Bearer ${access}` },
+      });
+      onRemove(result.incident);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not remove imagery.");
+    } finally { setSaving(false); }
+  }
+  return <form className="incident-form" onSubmit={remove}>
+    {error && <p className="incident-error" role="alert">{error}</p>}
+    <button className="world-primary" type="submit" disabled={saving}>
+      {saving && <LoaderCircle size={16} className="incident-spinner" aria-hidden />} Remove imagery
+    </button>
+  </form>;
+}
+
 type IncidentLocation = { center: Coordinate; label: string };
 type MapFocus = { point: Coordinate; zoom?: number };
 const noIncidents: Incident[] = [];
