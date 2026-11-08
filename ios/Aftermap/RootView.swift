@@ -1,5 +1,6 @@
 import PhotosUI
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 private enum RouteEndpointEditor: String, Identifiable {
@@ -130,6 +131,7 @@ struct RootView: View {
                         Task {
                             if await store.submitSearch() {
                                 searchFocused = false
+                                dismissKeyboard()
                                 withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
                                     dashboardDetent = .medium
                                 }
@@ -172,7 +174,10 @@ struct RootView: View {
                             Button {
                                 store.choosePlace(place)
                                 searchFocused = false
-                                dashboardDetent = .medium
+                                dismissKeyboard()
+                                withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                                    dashboardDetent = .medium
+                                }
                             } label: {
                                 HStack(spacing: 12) {
                                     Image(systemName: "mappin.circle.fill")
@@ -963,6 +968,7 @@ private struct RouteEndpointSearchSheet: View {
     }
 
     private func choose(_ place: PlaceResult) {
+        dismissKeyboard()
         if endpoint == .origin {
             store.setOrigin(place: place)
         } else {
@@ -970,6 +976,15 @@ private struct RouteEndpointSearchSheet: View {
         }
         dismiss()
     }
+}
+
+private func dismissKeyboard() {
+    UIApplication.shared.sendAction(
+        #selector(UIResponder.resignFirstResponder),
+        to: nil,
+        from: nil,
+        for: nil
+    )
 }
 
 private struct DisasterHubSheet: View {
