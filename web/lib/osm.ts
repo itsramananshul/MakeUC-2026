@@ -60,12 +60,24 @@ export async function loadRoads(bounds: GeographicBounds): Promise<Road[]> {
 type SearchResult = { at: number; places: Place[] };
 const searchCache = new Map<string, SearchResult>();
 let lastSearch = 0;
+let searchQueue: Promise<void> = Promise.resolve();
+
+async function waitForPublicGeocoder(): Promise<void> {
+  if (process.env.PHOTON_URL) return;
+  const turn = searchQueue.then(async () => {
+    const delay = Math.max(0, 750 - (Date.now() - lastSearch));
+    if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+    lastSearch = Date.now();
+  });
+  searchQueue = turn.catch(() => undefined);
+  await turn;
+}
+
 export async function searchPlaces(query: string): Promise<Place[]> {
   const cacheKey = query.toLocaleLowerCase();
   const entry = searchCache.get(cacheKey);
   if (entry && Date.now() - entry.at < 30 * 60_000) return entry.places;
-  if (!process.env.PHOTON_URL && Date.now() - lastSearch < 750) throw new RequestError("Wait briefly before searching again.", 429);
-  lastSearch = Date.now();
+  await waitForPublicGeocoder();
   const url = new URL("/api/", process.env.PHOTON_URL || "https://photon.komoot.io");
   url.searchParams.set("q", query);
   url.searchParams.set("limit", "8");

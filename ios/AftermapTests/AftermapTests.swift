@@ -371,6 +371,36 @@ final class AftermapTests: XCTestCase {
     }
 
     @MainActor
+    func testThrottledPlaceSearchRetriesWithoutShowingAnAlert() async {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        var requestCount = 0
+        MockURLProtocol.handler = { request in
+            requestCount += 1
+            if requestCount == 1 {
+                let data = #"{"error":"Wait briefly before searching again."}"#.data(using: .utf8)!
+                return (HTTPURLResponse(url: request.url!, statusCode: 429, httpVersion: nil, headerFields: nil)!, data)
+            }
+            let data = #"{"places":[{"id":"gandhinagar","name":"Gandhinagar","detail":"Gujarat, India","latitude":23.2156,"longitude":72.6369}]}"#.data(using: .utf8)!
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
+        }
+        let suite = "Aftermap.SearchThrottle.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = WorldMapStore(defaults: defaults, urlSession: session)
+        store.query = "Gandhinagar"
+
+        await store.search()
+
+        XCTAssertEqual(requestCount, 2)
+        XCTAssertEqual(store.places.first?.name, "Gandhinagar")
+        XCTAssertNil(store.searchMessage)
+        XCTAssertNil(store.notice)
+        XCTAssertFalse(store.isSearching)
+    }
+
+    @MainActor
     func testAcceptedAutomaticLocationBecomesRouteStart() {
         let suite = "GaslightMaps.AutomaticLocation.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

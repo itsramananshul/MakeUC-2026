@@ -87,7 +87,7 @@ struct RootView: View {
                 store.beginReportLocationSelection()
             }
         }
-        .alert("Gaslight Maps", isPresented: Binding(
+        .alert("AFTERMAP", isPresented: Binding(
             get: { store.notice != nil },
             set: { if !$0 { store.notice = nil } }
         )) {
@@ -138,6 +138,16 @@ struct RootView: View {
             .padding(.horizontal, 14)
             .frame(height: 48)
             .background(Color(.secondarySystemBackground), in: Capsule())
+
+            if let message = store.searchMessage, store.places.isEmpty {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 8)
+                    .accessibilityIdentifier("place.searchMessage")
+            }
 
             if !store.places.isEmpty {
                 ScrollView {
@@ -202,16 +212,6 @@ struct RootView: View {
                 .frame(maxWidth: .infinity, minHeight: 20)
                 .contentShape(Rectangle())
                 .onTapGesture { setDashboardExpanded(!dashboardExpanded) }
-                .gesture(
-                    DragGesture(minimumDistance: 8)
-                        .onEnded { value in
-                            if value.translation.height > 35 {
-                                setDashboardExpanded(false)
-                            } else if value.translation.height < -35 {
-                                setDashboardExpanded(true)
-                            }
-                        }
-                )
                 .accessibilityLabel(dashboardExpanded ? "Collapse map dashboard" : "Expand map dashboard")
                 .accessibilityAddTraits(.isButton)
                 .accessibilityIdentifier("dashboard.handle")
@@ -269,13 +269,31 @@ struct RootView: View {
         .padding(.horizontal, 16)
         .padding(.top, 8)
         .padding(.bottom, 14)
-        .background(.regularMaterial, in: UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28))
+        .background {
+            UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28)
+                .fill(.regularMaterial)
+                .ignoresSafeArea(edges: .bottom)
+        }
         .overlay {
             UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28)
                 .stroke(Color.primary.opacity(0.08))
         }
         .shadow(color: .black.opacity(0.18), radius: 18, y: -3)
+        .contentShape(Rectangle())
+        .simultaneousGesture(dashboardDragGesture)
         .animation(.spring(response: 0.34, dampingFraction: 0.86), value: dashboardExpanded)
+    }
+
+    private var dashboardDragGesture: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onEnded { value in
+                guard abs(value.translation.height) > abs(value.translation.width) else { return }
+                if value.translation.height > 28 {
+                    setDashboardExpanded(false)
+                } else if value.translation.height < -28 {
+                    setDashboardExpanded(true)
+                }
+            }
     }
 
     private func setDashboardExpanded(_ expanded: Bool) {
@@ -700,7 +718,7 @@ private struct SettingsSheet: View {
                     Button("Refresh incident data") { Task { await store.refreshIncidents() } }
                 }
             }
-            .navigationTitle("Gaslight Maps Settings")
+            .navigationTitle("AFTERMAP Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

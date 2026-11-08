@@ -30,7 +30,7 @@ final class AftermapUITests: XCTestCase {
         handle.tap()
         XCTAssertFalse(app.buttons["route.origin"].waitForExistence(timeout: 1))
 
-        handle.tap()
+        handle.swipeUp()
         XCTAssertTrue(app.buttons["route.origin"].waitForExistence(timeout: 3))
     }
 
@@ -104,7 +104,7 @@ final class AftermapUITests: XCTestCase {
         XCTAssertFalse(app.textFields.matching(NSPredicate(format: "placeholderValue CONTAINS[c] 'latitude' OR placeholderValue CONTAINS[c] 'longitude'")).firstMatch.exists)
 
         app.buttons["report.submit"].tap()
-        let confirmation = app.alerts["Gaslight Maps"]
+        let confirmation = app.alerts["AFTERMAP"]
         XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
         XCTAssertTrue(confirmation.staticTexts["Field report added to Preview Incident."].exists)
         confirmation.buttons["OK"].tap()

@@ -56,6 +56,7 @@ final class WorldMapStore: ObservableObject {
     @Published var query = ""
     @Published private(set) var places: [PlaceResult] = []
     @Published private(set) var isSearching = false
+    @Published private(set) var searchMessage: String?
     @Published var origin: IncidentCoordinate?
     @Published var destination: IncidentCoordinate?
     @Published var selectionMode: SelectionMode?
@@ -186,31 +187,56 @@ final class WorldMapStore: ObservableObject {
         guard term.count >= 2 else {
             places = []
             isSearching = false
+            searchMessage = nil
             return
         }
         isSearching = true
+        searchMessage = nil
         defer {
             if query.trimmingCharacters(in: .whitespacesAndNewlines) == term {
                 isSearching = false
             }
         }
         do {
-            try await Task.sleep(for: .milliseconds(250))
-            guard !Task.isCancelled else { return }
-            places = try await client.places(query: term)
+            // The public geocoder is rate limited. Wait for a real typing pause so
+            // ordinary text entry produces one request instead of one per letter.
+            try await Task.sleep(for: .milliseconds(850))
+            guard !Task.isCancelled,
+                  query.trimmingCharacters(in: .whitespacesAndNewlines) == term else { return }
+
+            do {
+                places = try await client.places(query: term)
+            } catch {
+                guard isSearchThrottle(error) else { throw error }
+                try await Task.sleep(for: .milliseconds(900))
+                guard !Task.isCancelled,
+                      query.trimmingCharacters(in: .whitespacesAndNewlines) == term else { return }
+                places = try await client.places(query: term)
+            }
+
+            if places.isEmpty {
+                searchMessage = "No matching places found. Try a city, address, or landmark."
+            }
         } catch is CancellationError {
             return
         } catch {
             guard !Task.isCancelled else { return }
             places = []
-            notice = error.localizedDescription
+            searchMessage = isSearchThrottle(error)
+                ? "Search is busy. Pause for a moment, then try again."
+                : "Place search is temporarily unavailable. Try again shortly."
         }
+    }
+
+    private func isSearchThrottle(_ error: Error) -> Bool {
+        error.localizedDescription.localizedCaseInsensitiveContains("wait briefly before searching again")
     }
 
     func choosePlace(_ place: PlaceResult) {
         destination = place.coordinate
         query = place.name
         places = []
+        searchMessage = nil
         focus(on: place.coordinate, zoom: 14)
     }
 
@@ -344,7 +370,7 @@ final class WorldMapStore: ObservableObject {
                     $0.id != incident.id && $0.bounds.intersects(response.coordinates)
                 }) {
                     routeState = .unavailable(
-                        "The verified route for \(incident.name) also enters \(other.name), so Gaslight Maps withheld it pending cross-incident verification."
+                        "The verified route for \(incident.name) also enters \(other.name), so AFTERMAP withheld it pending cross-incident verification."
                     )
                 } else {
                     routeState = .route(response, affectedIncidentName: incident.name)
@@ -355,7 +381,7 @@ final class WorldMapStore: ObservableObject {
             let ordinary = try await client.ordinaryRoute(origin: origin, destination: destination)
             if let affected = incidents.first(where: { $0.bounds.intersects(ordinary.coordinates) }) {
                 routeState = .unavailable(
-                    "The proposed route enters \(affected.name), so Gaslight Maps withheld it pending incident-road verification."
+                    "The proposed route enters \(affected.name), so AFTERMAP withheld it pending incident-road verification."
                 )
             } else {
                 routeState = ordinary.status == .unavailable

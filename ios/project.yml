@@ -23,19 +23,19 @@ targets:
     info:
       path: Aftermap/Info.plist
       properties:
-        CFBundleDisplayName: Gaslight Maps
+        CFBundleDisplayName: AFTERMAP
         LSApplicationCategoryType: public.app-category.navigation
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-        NSCameraUsageDescription: "Gaslight Maps captures incident evidence photos you choose to submit."
-        NSLocalNetworkUsageDescription: "Gaslight Maps can connect to an incident server on your local network."
-        NSLocationWhenInUseUsageDescription: "Gaslight Maps uses your location to choose route endpoints and place field evidence."
-        NSMicrophoneUsageDescription: "Gaslight Maps records your incident report while speech transcription is active."
-        NSPhotoLibraryUsageDescription: "Gaslight Maps lets you select an incident evidence photo when the camera is unavailable."
-        NSSpeechRecognitionUsageDescription: "Gaslight Maps transcribes your spoken incident report into editable text."
+        NSCameraUsageDescription: "AFTERMAP captures incident evidence photos you choose to submit."
+        NSLocalNetworkUsageDescription: "AFTERMAP can connect to an incident server on your local network."
+        NSLocationWhenInUseUsageDescription: "AFTERMAP uses your location to choose route endpoints and place field evidence."
+        NSMicrophoneUsageDescription: "AFTERMAP records your incident report while speech transcription is active."
+        NSPhotoLibraryUsageDescription: "AFTERMAP lets you select an incident evidence photo when the camera is unavailable."
+        NSSpeechRecognitionUsageDescription: "AFTERMAP transcribes your spoken incident report into editable text."
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
     settings:

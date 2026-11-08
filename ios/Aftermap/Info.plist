@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Gaslight Maps</string>
+	<string>AFTERMAP</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -28,17 +28,17 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Gaslight Maps captures incident evidence photos you choose to submit.</string>
+	<string>AFTERMAP captures incident evidence photos you choose to submit.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Gaslight Maps can connect to an incident server on your local network.</string>
+	<string>AFTERMAP can connect to an incident server on your local network.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Gaslight Maps uses your location to choose route endpoints and place field evidence.</string>
+	<string>AFTERMAP uses your location to choose route endpoints and place field evidence.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Gaslight Maps records your incident report while speech transcription is active.</string>
+	<string>AFTERMAP records your incident report while speech transcription is active.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Gaslight Maps lets you select an incident evidence photo when the camera is unavailable.</string>
+	<string>AFTERMAP lets you select an incident evidence photo when the camera is unavailable.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Gaslight Maps transcribes your spoken incident report into editable text.</string>
+	<string>AFTERMAP transcribes your spoken incident report into editable text.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
