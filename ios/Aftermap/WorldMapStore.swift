@@ -482,6 +482,9 @@ final class WorldMapStore: ObservableObject {
     }
 
     private static func isLiveIncident(_ incident: Incident) -> Bool {
+        // A published survey history is operational evidence even if an older
+        // incident name still contains rehearsal wording.
+        if !incident.publishedSurveys.isEmpty, incident.surveys != nil { return true }
         let descriptor = [incident.name, incident.imagery?.source ?? ""]
             .joined(separator: " ")
             .lowercased()
@@ -1106,6 +1109,7 @@ final class WorldMapStore: ObservableObject {
                 kind: detail.kind,
                 bounds: detail.bounds,
                 imagery: detail.imagery,
+                surveys: detail.surveys,
                 version: detail.version,
                 roadCount: detail.roadCount
             )
@@ -1142,6 +1146,7 @@ final class WorldMapStore: ObservableObject {
                 kind: detail.kind,
                 bounds: detail.bounds,
                 imagery: detail.imagery,
+                surveys: detail.surveys,
                 version: detail.version,
                 roadCount: detail.roadCount
             )
@@ -1174,6 +1179,7 @@ final class WorldMapStore: ObservableObject {
                 kind: detail.kind,
                 bounds: detail.bounds,
                 imagery: detail.imagery,
+                surveys: detail.surveys,
                 version: detail.version,
                 roadCount: detail.roadCount
             )

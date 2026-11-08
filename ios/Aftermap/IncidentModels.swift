@@ -88,8 +88,14 @@ struct Incident: Codable, Identifiable, Equatable {
     var kind: Kind
     var bounds: IncidentBounds
     var imagery: IncidentImagery?
+    var surveys: [IncidentImagery]? = nil
     var version: Int
     var roadCount: Int
+
+    var publishedSurveys: [IncidentImagery] {
+        if let surveys { return surveys }
+        return imagery.map { [$0] } ?? []
+    }
 }
 
 struct IncidentListResponse: Codable { var incidents: [Incident] }
@@ -235,6 +241,7 @@ struct IncidentDetail: Codable, Identifiable, Equatable {
     var kind: Incident.Kind
     var bounds: IncidentBounds
     var imagery: IncidentImagery?
+    var surveys: [IncidentImagery]? = nil
     var version: Int
     var roadCount: Int
     var roads: [IncidentRoad]

@@ -133,6 +133,19 @@ final class AftermapTests: XCTestCase {
         XCTAssertEqual(currentImagery.detailTiles?.last?.bounds.east, -84.510)
     }
 
+    func testIncidentDecodesSurveyHistoryWithLegacyImageryFallback() throws {
+        let legacy = #"{"id":"legacy","name":"Legacy flood","kind":"incident","bounds":{"west":-84.52,"south":39.10,"east":-84.51,"north":39.11},"imagery":{"url":"/api/imagery/legacy","bounds":{"west":-84.52,"south":39.10,"east":-84.51,"north":39.11},"source":"Uploaded GeoTIFF","timestamp":"2026-11-07T22:00:00Z"},"version":1,"roadCount":0}"#.data(using: .utf8)!
+        let current = #"{"id":"current","name":"Current flood","kind":"incident","bounds":{"west":-84.53,"south":39.09,"east":-84.49,"north":39.12},"imagery":{"url":"/api/imagery/new","bounds":{"west":-84.52,"south":39.10,"east":-84.51,"north":39.11},"source":"New survey","timestamp":"2026-11-08T04:00:00Z"},"surveys":[{"url":"/api/imagery/old","bounds":{"west":-84.53,"south":39.09,"east":-84.49,"north":39.12},"source":"Old survey","timestamp":"2026-11-08T03:00:00Z"},{"url":"/api/imagery/new","bounds":{"west":-84.52,"south":39.10,"east":-84.51,"north":39.11},"source":"New survey","timestamp":"2026-11-08T04:00:00Z","detailTiles":[{"url":"/api/imagery/close-up","bounds":{"west":-84.515,"south":39.10,"east":-84.51,"north":39.105}}]}],"version":2,"roadCount":0}"#.data(using: .utf8)!
+
+        let legacyIncident = try JSONDecoder().decode(Incident.self, from: legacy)
+        let currentIncident = try JSONDecoder().decode(Incident.self, from: current)
+
+        XCTAssertNil(legacyIncident.surveys)
+        XCTAssertEqual(legacyIncident.publishedSurveys.map(\.url), ["/api/imagery/legacy"])
+        XCTAssertEqual(currentIncident.publishedSurveys.map(\.url), ["/api/imagery/old", "/api/imagery/new"])
+        XCTAssertEqual(currentIncident.publishedSurveys.last?.detailTiles?.first?.url, "/api/imagery/close-up")
+    }
+
     func testMapStyleFollowsSystemAppearance() {
         XCTAssertEqual(MapLibreWorldMap.styleURL(for: .light).lastPathComponent, "liberty")
         XCTAssertEqual(MapLibreWorldMap.styleURL(for: .dark).lastPathComponent, "fiord")
@@ -521,6 +534,28 @@ final class AftermapTests: XCTestCase {
     }
 
     @MainActor
+    func testPublishedSurveyHistoryKeepsOperationalIncidentVisible() async {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/incidents")
+            let data = #"{"incidents":[{"id":"surveyed","name":"Cincinnati Flood Exercise","kind":"incident","bounds":{"west":-84.6,"south":39.0,"east":-84.4,"north":39.2},"imagery":{"url":"/new.png","bounds":{"west":-84.6,"south":39.0,"east":-84.4,"north":39.2},"source":"simulated imagery","timestamp":"2026-11-08"},"surveys":[{"url":"/old.png","bounds":{"west":-84.6,"south":39.0,"east":-84.4,"north":39.2},"source":"survey","timestamp":"2026-11-07"},{"url":"/new.png","bounds":{"west":-84.6,"south":39.0,"east":-84.4,"north":39.2},"source":"survey","timestamp":"2026-11-08"}],"version":2,"roadCount":10}]}"#.data(using: .utf8)!
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
+        }
+        let suite = "AFTERMAP.SurveyedIncident.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("https://aftermap.example", forKey: "aftermap.serverURL")
+        let store = WorldMapStore(defaults: defaults, urlSession: session)
+
+        await store.refreshIncidents()
+
+        XCTAssertEqual(store.incidents.map(\.id), ["surveyed"])
+        XCTAssertEqual(store.incidents.first?.publishedSurveys.count, 2)
+    }
+
+    @MainActor
     func testCanceledPlaceSearchDoesNotShowAnAlert() async {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
@@ -813,7 +848,11 @@ final class AftermapTests: XCTestCase {
             throw XCTSkip("Set AFTERMAP_LIVE_WORLD_URL to opt into the read-only production contract check.")
         }
         let client = IncidentAPIClient(baseURL: serverURL)
-        _ = try await client.incidents()
+        let incidents = try await client.incidents()
+        if let cincinnati = incidents.first(where: { $0.id == "xfkZTO2kEwu9cF8T" }) {
+            XCTAssertEqual(cincinnati.publishedSurveys.count, 3)
+            XCTAssertEqual(cincinnati.publishedSurveys.last?.detailTiles?.count, 6)
+        }
 
         let places = try await client.places(query: "Cincinnati")
         XCTAssertFalse(places.isEmpty)

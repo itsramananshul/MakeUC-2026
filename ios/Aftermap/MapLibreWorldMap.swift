@@ -175,10 +175,13 @@ struct MapLibreWorldMap: UIViewRepresentable {
 
         private var styleSignature: String {
             let incidentVersions = store.incidents.map { incident in
-                let imagery = incident.imagery
-                let detailTiles = imagery?.detailTiles?.map { "\($0.url):\($0.bounds.west),\($0.bounds.south),\($0.bounds.east),\($0.bounds.north)" }
-                    .joined(separator: ",") ?? "-"
-                return "\(incident.id):\(incident.version):\(imagery?.url ?? "-"):\(detailTiles)"
+                let surveys = incident.publishedSurveys.map { imagery in
+                    let detailTiles = imagery.detailTiles?.map {
+                        "\($0.url):\($0.bounds.west),\($0.bounds.south),\($0.bounds.east),\($0.bounds.north)"
+                    }.joined(separator: ",") ?? "-"
+                    return "\(imagery.timestamp):\(imagery.url):\(detailTiles)"
+                }.joined(separator: ";")
+                return "\(incident.id):\(incident.version):\(surveys)"
             }.joined(separator: "|")
             let detail = store.incidentDetail.map { "\($0.id):\($0.version):\($0.roads.count)" } ?? "-"
             let selectedRoad = store.selectedRoad?.id ?? "-"
@@ -249,28 +252,31 @@ struct MapLibreWorldMap: UIViewRepresentable {
 
         private func addImagery(to style: MLNStyle) {
             for (index, incident) in store.incidents.enumerated() {
-                guard let imagery = incident.imagery, let url = store.client.resolvedURL(imagery.url) else { continue }
-                addImageryLayer(
-                    to: style,
-                    sourceID: "aftermap-image-source-\(index)",
-                    layerID: "aftermap-image-layer-\(index)",
-                    url: url,
-                    bounds: imagery.bounds,
-                    opacity: 0.72,
-                    minimumZoom: 0
-                )
-
-                for (tileIndex, tile) in (imagery.detailTiles ?? []).enumerated() {
-                    guard let tileURL = store.client.resolvedURL(tile.url) else { continue }
+                let surveys = incident.publishedSurveys.sorted { $0.timestamp < $1.timestamp }
+                for (surveyIndex, imagery) in surveys.enumerated() {
+                    guard let url = store.client.resolvedURL(imagery.url) else { continue }
                     addImageryLayer(
                         to: style,
-                        sourceID: "aftermap-image-detail-source-\(index)-\(tileIndex)",
-                        layerID: "aftermap-image-detail-layer-\(index)-\(tileIndex)",
-                        url: tileURL,
-                        bounds: tile.bounds,
+                        sourceID: "aftermap-image-source-\(index)-\(surveyIndex)",
+                        layerID: "aftermap-image-layer-\(index)-\(surveyIndex)",
+                        url: url,
+                        bounds: imagery.bounds,
                         opacity: 1,
-                        minimumZoom: 15
+                        minimumZoom: 0
                     )
+
+                    for (tileIndex, tile) in (imagery.detailTiles ?? []).enumerated() {
+                        guard let tileURL = store.client.resolvedURL(tile.url) else { continue }
+                        addImageryLayer(
+                            to: style,
+                            sourceID: "aftermap-image-detail-source-\(index)-\(surveyIndex)-\(tileIndex)",
+                            layerID: "aftermap-image-detail-layer-\(index)-\(surveyIndex)-\(tileIndex)",
+                            url: tileURL,
+                            bounds: tile.bounds,
+                            opacity: 1,
+                            minimumZoom: 15
+                        )
+                    }
                 }
             }
         }
