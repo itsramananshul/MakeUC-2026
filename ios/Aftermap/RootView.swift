@@ -6,6 +6,7 @@ struct RootView: View {
     @State private var showingSettings = false
     @State private var showingIncident = false
     @State private var showingReport = false
+    @State private var showingDisasterHub = false
 
     var body: some View {
         ZStack {
@@ -14,7 +15,6 @@ struct RootView: View {
                 .accessibilityIdentifier("world.map")
 
             VStack(spacing: 10) {
-                searchPanel
                 if let mode = store.selectionMode {
                     selectionBanner(mode)
                 } else if case let .stale(message) = store.connection {
@@ -22,8 +22,8 @@ struct RootView: View {
                 }
                 Spacer()
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 4)
+            .padding(.horizontal)
+            .padding(.top, 8)
 
             VStack {
                 Spacer()
@@ -32,10 +32,10 @@ struct RootView: View {
                     Button { store.requestCurrentLocationAsOrigin() } label: {
                         Image(systemName: store.userCoordinate == nil ? "location" : "location.fill")
                             .font(.title3.weight(.semibold))
-                            .frame(width: 48, height: 48)
-                            .background(.regularMaterial, in: Circle())
-                            .shadow(color: .black.opacity(0.22), radius: 8, y: 3)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.circle)
+                    .controlSize(.large)
                     .accessibilityLabel("Use my location as start")
                     .accessibilityIdentifier("map.useCurrentLocation")
                 }
@@ -43,9 +43,10 @@ struct RootView: View {
             .padding(.horizontal, 14)
             .padding(.bottom, 8)
         }
-        .tint(AftermapTheme.mint)
-        .safeAreaInset(edge: .bottom) { bottomPanel }
+        .tint(.blue)
+        .safeAreaInset(edge: .bottom, spacing: 0) { dashboardPanel }
         .sheet(isPresented: $showingSettings) { SettingsSheet(store: store) }
+        .sheet(isPresented: $showingDisasterHub) { DisasterHubSheet(store: store) }
         .sheet(isPresented: $showingIncident) { IncidentSheet(store: store, showingReport: $showingReport) }
         .sheet(isPresented: $showingReport) {
             ReportSheet(store: store) {
@@ -81,7 +82,7 @@ struct RootView: View {
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField("Search any place", text: $store.query)
+                TextField("Search Maps", text: $store.query)
                     .textInputAutocapitalization(.words)
                     .submitLabel(.search)
                     .accessibilityIdentifier("place.search")
@@ -96,10 +97,10 @@ struct RootView: View {
                     .accessibilityLabel("Settings")
             }
             .padding(.horizontal, 14)
-            .frame(height: 50)
+            .frame(height: 48)
+            .background(Color(.secondarySystemBackground), in: Capsule())
 
             if !store.places.isEmpty {
-                Divider()
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(store.places.prefix(6))) { place in
@@ -123,11 +124,10 @@ struct RootView: View {
                         }
                     }
                 }
-                .frame(maxHeight: 290)
+                .frame(maxHeight: 220)
+                .padding(.top, 8)
             }
         }
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.2), radius: 12, y: 4)
     }
 
     private func selectionBanner(_ mode: WorldMapStore.SelectionMode) -> some View {
@@ -155,83 +155,140 @@ struct RootView: View {
         .accessibilityHint(message)
     }
 
-    private var bottomPanel: some View {
-        VStack(spacing: 10) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Gaslight Maps").font(.caption.weight(.black)).tracking(1.4)
-                    switch store.connection {
-                    case .loading:
-                        Text("Loading the world map…")
-                    case .live:
-                        Text(store.incidents.isEmpty ? "World map live • No active incidents" : "World map live • \(store.incidents.count) active incident\(store.incidents.count == 1 ? "" : "s")")
-                    case .stale:
-                        Text("Map data may be stale")
-                    }
-                }
-                .font(.caption)
-                Spacer()
-                if !store.incidents.isEmpty {
-                    Menu {
-                        ForEach(store.incidents) { incident in
-                            Button(incident.name) { Task { await store.loadIncident(incident) } }
-                        }
-                    } label: {
-                        Label("Incidents", systemImage: "exclamationmark.triangle.fill")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(AftermapTheme.red)
-                    }
-                    .accessibilityIdentifier("incidents.menu")
-                }
-            }
+    private var dashboardPanel: some View {
+        VStack(spacing: 12) {
+            Capsule()
+                .fill(Color.secondary.opacity(0.35))
+                .frame(width: 38, height: 5)
 
-            HStack(spacing: 8) {
-                endpointButton(title: "Start", coordinate: store.origin, mode: .origin, icon: "location.fill")
-                Image(systemName: "arrow.right").font(.caption).foregroundStyle(.secondary)
-                endpointButton(title: "Destination", coordinate: store.destination, mode: .destination, icon: "mappin.and.ellipse")
-            }
+            searchPanel
 
-            routeStatus
-
-            Button {
-                Task { await store.previewRoute() }
-            } label: {
+            if store.places.isEmpty {
                 HStack {
-                    if case .calculating = store.routeState { ProgressView().tint(.white) }
-                    Image(systemName: "figure.walk")
-                    Text(routeButtonTitle).fontWeight(.bold)
+                    Text("Report & Navigate")
+                        .font(.title3.weight(.bold))
                     Spacer()
-                    Image(systemName: "chevron.right")
+                    Label(connectionLabel, systemImage: connectionIcon)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(connectionColor)
                 }
-                .padding(.horizontal, 14)
-                .frame(height: 48)
-                .foregroundStyle(.white)
-                .background(Color.blue, in: RoundedRectangle(cornerRadius: 14))
+
+                HStack(alignment: .top, spacing: 4) {
+                    quickAction(
+                        title: "Report",
+                        subtitle: "Disaster",
+                        icon: "exclamationmark.triangle.fill",
+                        tint: .red,
+                        accessibilityID: "disaster.report"
+                    ) { showingDisasterHub = true }
+
+                    quickAction(
+                        title: "Start",
+                        subtitle: store.origin.map(coordinateLabel) ?? "Choose",
+                        icon: "location.fill",
+                        tint: .blue,
+                        accessibilityID: "route.origin"
+                    ) { store.setSelectionMode(.origin) }
+
+                    quickAction(
+                        title: "Destination",
+                        subtitle: store.destination.map(coordinateLabel) ?? "Choose",
+                        icon: "mappin.and.ellipse",
+                        tint: .blue,
+                        accessibilityID: "route.destination"
+                    ) { store.setSelectionMode(.destination) }
+
+                    quickAction(
+                        title: "Route",
+                        subtitle: routeActionSubtitle,
+                        icon: "figure.walk",
+                        tint: .green,
+                        accessibilityID: "route.preview",
+                        disabled: store.origin == nil || store.destination == nil || store.routeState == .calculating
+                    ) { Task { await store.previewRoute() } }
+                }
+
+                routeStatus
             }
-            .disabled(store.origin == nil || store.destination == nil || store.routeState == .calculating)
-            .accessibilityIdentifier("route.preview")
         }
-        .padding(14)
-        .background(.ultraThinMaterial)
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 14)
+        .background(.regularMaterial, in: UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28))
+        .overlay {
+            UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28)
+                .stroke(Color.primary.opacity(0.08))
+        }
+        .shadow(color: .black.opacity(0.18), radius: 18, y: -3)
+        .padding(.horizontal, 8)
+        .background(.regularMaterial)
+        .ignoresSafeArea(edges: .bottom)
     }
 
-    private func endpointButton(title: String, coordinate: IncidentCoordinate?, mode: WorldMapStore.SelectionMode, icon: String) -> some View {
-        Button { store.setSelectionMode(mode) } label: {
-            HStack(spacing: 7) {
-                Image(systemName: icon).foregroundStyle(coordinate == nil ? .secondary : AftermapTheme.mint)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title).font(.caption2).foregroundStyle(.secondary)
-                    Text(coordinate == nil ? "Choose on map" : coordinateLabel(coordinate!))
-                        .font(.caption.weight(.semibold)).lineLimit(1)
-                }
-                Spacer(minLength: 0)
+    private func quickAction(
+        title: String,
+        subtitle: String,
+        icon: String,
+        tint: Color,
+        accessibilityID: String,
+        disabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        VStack(spacing: 5) {
+            Button(action: action) {
+                Image(systemName: icon)
+                    .font(.title3.weight(.semibold))
             }
-            .padding(.horizontal, 10)
-            .frame(maxWidth: .infinity, minHeight: 48)
-            .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.circle)
+            .controlSize(.large)
+            .tint(tint)
+            .disabled(disabled)
+            .accessibilityIdentifier(accessibilityID)
+
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+            Text(subtitle)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(mode == .origin ? "route.origin" : "route.destination")
+        .frame(maxWidth: .infinity)
+    }
+
+    private var routeActionSubtitle: String {
+        switch store.routeState {
+        case .calculating: "Checking"
+        case .route: "Ready"
+        case .unavailable: "Unavailable"
+        case .idle: "Preview"
+        }
+    }
+
+    private var connectionLabel: String {
+        switch store.connection {
+        case .loading: "Loading"
+        case .live: store.incidents.isEmpty ? "Map live" : "\(store.incidents.count) active"
+        case .stale: "Offline"
+        }
+    }
+
+    private var connectionIcon: String {
+        switch store.connection {
+        case .loading: "arrow.triangle.2.circlepath"
+        case .live: "checkmark.circle.fill"
+        case .stale: "wifi.exclamationmark"
+        }
+    }
+
+    private var connectionColor: Color {
+        switch store.connection {
+        case .loading: .secondary
+        case .live: .green
+        case .stale: .orange
+        }
     }
 
     @ViewBuilder private var routeStatus: some View {
@@ -275,6 +332,60 @@ struct RootView: View {
 
     private func coordinateLabel(_ value: IncidentCoordinate) -> String {
         String(format: "%.4f, %.4f", value.latitude, value.longitude)
+    }
+}
+
+private struct DisasterHubSheet: View {
+    @ObservedObject var store: WorldMapStore
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if store.incidents.isEmpty {
+                    ContentUnavailableView(
+                        "No Active Disasters",
+                        systemImage: "exclamationmark.triangle",
+                        description: Text("New disaster-area creation will be connected to the reporting flow.")
+                    )
+                } else {
+                    List(store.incidents) { incident in
+                        Button {
+                            Task {
+                                await store.loadIncident(incident)
+                                dismiss()
+                            }
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(.red)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(incident.name)
+                                        .foregroundStyle(.primary)
+                                    Text("Open map and add field evidence")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                    }
+                    .listStyle(.plain)
+                }
+            }
+            .navigationTitle("Report Disaster")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 

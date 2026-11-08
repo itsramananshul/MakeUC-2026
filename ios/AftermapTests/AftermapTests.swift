@@ -107,6 +107,11 @@ final class AftermapTests: XCTestCase {
         XCTAssertTrue(response.incidents.isEmpty)
     }
 
+    func testMapStyleFollowsSystemAppearance() {
+        XCTAssertEqual(MapLibreWorldMap.styleURL(for: .light).lastPathComponent, "liberty")
+        XCTAssertEqual(MapLibreWorldMap.styleURL(for: .dark).lastPathComponent, "fiord")
+    }
+
     func testIncidentBoundsDetectsRouteIntersection() {
         let bounds = IncidentBounds(west: -85.0, south: 29.0, east: -84.0, north: 30.0)
         XCTAssertTrue(bounds.intersects([

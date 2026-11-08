@@ -4,11 +4,21 @@ import UIKit
 
 struct MapLibreWorldMap: UIViewRepresentable {
     @ObservedObject var store: WorldMapStore
+    @Environment(\.colorScheme) private var colorScheme
 
-    func makeCoordinator() -> Coordinator { Coordinator(store: store) }
+    static let lightStyleURL = URL(string: "https://tiles.openfreemap.org/styles/liberty")!
+    static let darkStyleURL = URL(string: "https://tiles.openfreemap.org/styles/fiord")!
+
+    static func styleURL(for colorScheme: ColorScheme) -> URL {
+        colorScheme == .dark ? darkStyleURL : lightStyleURL
+    }
+
+    private var baseStyleURL: URL { Self.styleURL(for: colorScheme) }
+
+    func makeCoordinator() -> Coordinator { Coordinator(store: store, baseStyleURL: baseStyleURL) }
 
     func makeUIView(context: Context) -> MLNMapView {
-        let map = MLNMapView(frame: .zero, styleURL: URL(string: "https://tiles.openfreemap.org/styles/liberty"))
+        let map = MLNMapView(frame: .zero, styleURL: baseStyleURL)
         map.delegate = context.coordinator
         map.logoView.isHidden = false
         map.attributionButton.isHidden = false
@@ -23,6 +33,7 @@ struct MapLibreWorldMap: UIViewRepresentable {
 
     func updateUIView(_ map: MLNMapView, context: Context) {
         context.coordinator.store = store
+        context.coordinator.applyBaseStyle(baseStyleURL, to: map)
         context.coordinator.refreshStyle()
         if context.coordinator.lastLocationRequestRevision != store.locationRequestRevision {
             context.coordinator.lastLocationRequestRevision = store.locationRequestRevision
@@ -43,9 +54,19 @@ struct MapLibreWorldMap: UIViewRepresentable {
         var lastLocationRequestRevision = 0
         private var isStyleReady = false
         private var renderedSignature = ""
+        private var baseStyleURL: URL
 
-        init(store: WorldMapStore) {
+        init(store: WorldMapStore, baseStyleURL: URL) {
             self.store = store
+            self.baseStyleURL = baseStyleURL
+        }
+
+        func applyBaseStyle(_ url: URL, to mapView: MLNMapView) {
+            guard url != baseStyleURL else { return }
+            baseStyleURL = url
+            isStyleReady = false
+            renderedSignature = ""
+            mapView.styleURL = url
         }
 
         func mapView(_ mapView: MLNMapView, didFinishLoading style: MLNStyle) {

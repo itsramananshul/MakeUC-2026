@@ -8,7 +8,6 @@ struct AftermapApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(store)
-                .preferredColorScheme(.dark)
                 .task { await store.run() }
         }
     }
