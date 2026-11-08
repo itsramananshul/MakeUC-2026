@@ -120,6 +120,7 @@ export function setIncidentRoads(id: string, imported: Road[]) {
 }
 export function saveIncidentImage(id: string, bytes: Buffer, data: Omit<IncidentImagery, "url">, jobId?: string) {
   return changeIncident(id, incident => {
+    if (jobId && incidentJob(id, jobId)?.state !== "queued") return false;
     const bounds = incident.bounds, image = data.bounds;
     if (image.east <= bounds.west || image.west >= bounds.east || image.north <= bounds.south || image.south >= bounds.north) {
       throw new RequestError("This image is outside the selected incident area.", 422);
@@ -225,5 +226,5 @@ export function recordJob(id: string, jobId: string) {
   init().prepare("INSERT INTO incident_jobs VALUES (?, ?, 'queued', ?)").run(id, jobId, Date.now());
 }
 export function failJob(id: string, jobId: string) {
-  init().prepare("UPDATE incident_jobs SET state = 'failed' WHERE incident_id = ? AND id = ?").run(id, jobId);
+  init().prepare("UPDATE incident_jobs SET state = 'failed' WHERE incident_id = ? AND id = ? AND state = 'queued'").run(id, jobId);
 }

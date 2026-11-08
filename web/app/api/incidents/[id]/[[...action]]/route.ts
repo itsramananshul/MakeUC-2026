@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { droneStatus, startDroneJob } from "@/lib/drone";
 import { geographicBounds } from "@/lib/geography";
 import { imageryLimit, mosaic } from "@/lib/imagery";
@@ -11,11 +12,37 @@ import { readInput } from "@/lib/validation";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 type Context = { params: Promise<{ id: string; action?: string[] }> };
+const syncingSurveys = new Set<string>();
+
+async function syncSurvey(id: string, job: NonNullable<ReturnType<typeof incidentJob>>) {
+  try {
+    const result = await droneStatus(id, job.id, (bytes, data) => {
+      saveIncidentImage(id, bytes, { bounds: geographicBounds(data.bounds), source: data.source, timestamp: data.timestamp }, job.id);
+    }, job.created_at);
+    if (result.status === "failed") failJob(id, job.id);
+    return result;
+  } catch (error) {
+    if (error instanceof RequestError && (error.status === 413 || error.status === 422)) failJob(id, job.id);
+    throw error;
+  }
+}
 
 export async function GET(request: Request, context: Context) {
   const { id, action = [] } = await context.params;
   try {
-    if (!action.length) return json(getIncident(id));
+    if (!action.length) {
+      const incident = getIncident(id);
+      const job = pendingJob(id);
+      if (job && !syncingSurveys.has(id)) {
+        syncingSurveys.add(id);
+        after(async () => {
+          try { await syncSurvey(id, job); }
+          catch { /* The operator can still check status, and a later read can retry. */ }
+          finally { syncingSurveys.delete(id); }
+        });
+      }
+      return json(incident);
+    }
     if (action.length === 2 && action[0] === "evidence") {
       authorizeIncident(id, bearer(request));
       const image = getEvidence(id, action[1]);
@@ -29,11 +56,7 @@ export async function GET(request: Request, context: Context) {
       if (!job) throw new RequestError("That processing job was not found.", 404);
       if (job.state === "complete") return json({ id: job.id, status: "complete", progress: 100 });
       if (job.state === "failed") return json({ id: job.id, status: "failed" });
-      const result = await droneStatus(id, job.id, (bytes, data) => {
-        saveIncidentImage(id, bytes, { bounds: geographicBounds(data.bounds), source: data.source, timestamp: data.timestamp }, job.id);
-      }, job.created_at);
-      if (result.status === "failed") failJob(id, job.id);
-      return json(result);
+      return json(await syncSurvey(id, job));
     }
     return json({ error: "Unknown incident endpoint." }, 404);
   } catch (error) { return failure(error); }

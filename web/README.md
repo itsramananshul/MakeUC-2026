@@ -1,11 +1,11 @@
-# AFTERMAP web
+# Gaslight Maps web
 
-AFTERMAP opens to a worldwide, interactive map. Search a place, request walking directions, or create an incident to collect aerial surveys and field reports in that area.
+Gaslight Maps opens to a worldwide, interactive map. Search a place, request walking directions, or create an incident to collect aerial surveys and field reports in that area.
 
 ## Use the app
 
-1. Open [AFTERMAP](https://aftermap-makeuc.vercel.app). Search for a place or move the map to the affected area.
-2. Choose **New incident**, enter a name, and set the center and area size. The live deployment requires a workspace operator key to create incidents.
+1. Open [Gaslight Maps](https://yourmapisgaslightingyou.us). Search for a place or move the map to the affected area.
+2. Choose **Report incident**, enter a name, and search for a place, use your location, or drop a pin. Set the area size and optionally attach an initial note or photo. The live deployment requires a workspace operator key to create incidents.
 3. Copy the incident access key and share it privately with authorized reporters. Use **Import roads** to load OpenStreetMap streets and footpaths. Imported segments start unverified.
 4. Choose **Add imagery** to upload georeferenced GeoTIFFs or a set of overlapping geotagged drone photos. Uploaded imagery is shown at its real coordinates, with transparent gaps over the underlying map. A survey that does not overlap the incident area is rejected.
 5. Select a road on the map or find it by name. Report its observed condition and optionally attach a photo. Use **Report a point** for a location observation or **Add passage** for a connection missing from the street data.
@@ -37,7 +37,7 @@ Copy `.env.example` to `.env.local` for configuration. Set `AFTERMAP_OPERATOR_KE
 docker run --rm --name aftermap-nodeodm -p 127.0.0.1:3111:3000 opendronemap/nodeodm:latest
 ```
 
-Set `NODEODM_URL=http://127.0.0.1:3111`. The drone job can be reopened from **Add imagery** while it is processing. Provide overlapping images of the same area. Survey imagery does not change passage conditions by itself.
+Set `NODEODM_URL=http://127.0.0.1:3111`. Provide overlapping images of the same area. View job progress from **Add imagery**. If the operator closes that dialog, opening or refreshing the incident picks up the completed survey. Survey imagery does not change passage conditions by itself.
 
 ## Deployment and shared API
 
