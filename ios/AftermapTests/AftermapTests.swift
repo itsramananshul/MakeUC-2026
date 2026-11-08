@@ -170,17 +170,17 @@ final class AftermapTests: XCTestCase {
     }
 
     @MainActor
-    func testIncidentSurveyImageryIsOptIn() {
+    func testIncidentSurveyImageryIsVisibleByDefault() {
         let suite = "AFTERMAP.SurveyVisibility.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = WorldMapStore(defaults: defaults)
 
-        XCTAssertFalse(store.showsIncidentSurveyImagery)
-        XCTAssertFalse(store.showsSurveyImageryOnMap)
-
-        store.showsIncidentSurveyImagery = true
+        XCTAssertTrue(store.showsIncidentSurveyImagery)
         XCTAssertTrue(store.showsSurveyImageryOnMap)
+
+        store.showsIncidentSurveyImagery = false
+        XCTAssertFalse(store.showsSurveyImageryOnMap)
     }
 
     @MainActor
@@ -825,7 +825,7 @@ final class AftermapTests: XCTestCase {
         store.installRouteForTesting(route)
 
         XCTAssertTrue(store.requiresRoutePreview)
-        XCTAssertFalse(store.showsSurveyImageryOnMap)
+        XCTAssertTrue(store.showsSurveyImageryOnMap)
         store.showRoutePreview(route)
         XCTAssertNil(store.notice)
         XCTAssertEqual(store.navigationState, .idle)

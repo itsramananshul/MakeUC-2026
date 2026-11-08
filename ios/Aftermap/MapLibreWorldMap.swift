@@ -85,7 +85,8 @@ struct MapLibreWorldMap: UIViewRepresentable {
         var lastNavigationCameraRevision = -1
         var wasFollowingNavigation = false
         private var isStyleReady = false
-        private var renderedSignature = ""
+        private var renderedStaticSignature = ""
+        private var renderedDynamicSignature = ""
         private var baseStyleURL: URL
         var onMapTap: ((CLLocationCoordinate2D) -> Void)?
 
@@ -99,13 +100,15 @@ struct MapLibreWorldMap: UIViewRepresentable {
             guard url != baseStyleURL else { return }
             baseStyleURL = url
             isStyleReady = false
-            renderedSignature = ""
+            renderedStaticSignature = ""
+            renderedDynamicSignature = ""
             mapView.styleURL = url
         }
 
         func mapView(_ mapView: MLNMapView, didFinishLoading style: MLNStyle) {
             isStyleReady = true
-            renderedSignature = ""
+            renderedStaticSignature = ""
+            renderedDynamicSignature = ""
             refreshStyle()
         }
 
@@ -170,13 +173,20 @@ struct MapLibreWorldMap: UIViewRepresentable {
 
         func refreshStyle() {
             guard isStyleReady, let style = mapView?.style else { return }
-            let signature = styleSignature
-            guard signature != renderedSignature else { return }
-            renderedSignature = signature
-            removeAftermapContent(from: style)
-            configureBaseMap(in: style)
-            addImagery(to: style)
-            addIncidents(to: style)
+            let staticSignature = staticStyleSignature
+            if staticSignature != renderedStaticSignature {
+                renderedStaticSignature = staticSignature
+                renderedDynamicSignature = ""
+                removeAftermapContent(from: style)
+                configureBaseMap(in: style)
+                addImagery(to: style)
+                addIncidents(to: style)
+            }
+
+            let dynamicSignature = dynamicStyleSignature
+            guard dynamicSignature != renderedDynamicSignature else { return }
+            renderedDynamicSignature = dynamicSignature
+            removeDynamicContent(from: style)
             addRoads(to: style)
             addRoute(to: style)
             addEndpoints(to: style)
@@ -184,15 +194,15 @@ struct MapLibreWorldMap: UIViewRepresentable {
             addIncidentDraftCenter(to: style)
         }
 
-        private var styleSignature: String {
+        private var staticStyleSignature: String {
             let incidentVersions = store.incidents.map { incident in
-                let surveys = incident.publishedSurveys.map { imagery in
+                let survey = incident.publishedSurveys.max { $0.timestamp < $1.timestamp }.map { imagery in
                     let detailTiles = imagery.detailTiles?.map {
                         "\($0.url):\($0.bounds.west),\($0.bounds.south),\($0.bounds.east),\($0.bounds.north)"
                     }.joined(separator: ",") ?? "-"
                     return "\(imagery.timestamp):\(imagery.url):\(detailTiles)"
-                }.joined(separator: ";")
-                return "\(incident.id):\(incident.version):\(surveys)"
+                } ?? "-"
+                return "\(incident.id):\(incident.version):\(survey)"
             }.joined(separator: "|")
             let recovery = store.recoveryImagery.map { imagery in
                 let detailTiles = imagery.detailTiles?.map {
@@ -200,6 +210,11 @@ struct MapLibreWorldMap: UIViewRepresentable {
                 }.joined(separator: ",") ?? "-"
                 return "\(imagery.timestamp):\(imagery.url):\(detailTiles)"
             }.joined(separator: ";")
+            let surveyVisibility = store.showsIncidentSurveyImagery ? "surveys-on" : "surveys-off"
+            return [store.mapStyle.rawValue, surveyVisibility, incidentVersions, recovery].joined(separator: "#")
+        }
+
+        private var dynamicStyleSignature: String {
             let detail = store.incidentDetail.map { "\($0.id):\($0.version):\($0.roads.count)" } ?? "-"
             let selectedRoad = store.selectedRoad?.id ?? "-"
             let origin = store.origin.map { "\($0.latitude),\($0.longitude)" } ?? "-"
@@ -224,8 +239,7 @@ struct MapLibreWorldMap: UIViewRepresentable {
             case .arrived: "arrived"
             }
             let navigation = "\(navigationState):\(store.navigationRenderRevision)"
-            let surveyVisibility = store.showsIncidentSurveyImagery ? "surveys-on" : "surveys-off"
-            return [store.mapStyle.rawValue, surveyVisibility, incidentVersions, recovery, detail, selectedRoad, origin, destination, reportLocation, incidentDraftCenter, route, navigation]
+            return [detail, selectedRoad, origin, destination, reportLocation, incidentDraftCenter, route, navigation]
                 .joined(separator: "#")
         }
 
@@ -268,16 +282,29 @@ struct MapLibreWorldMap: UIViewRepresentable {
             }
         }
 
+        private func removeDynamicContent(from style: MLNStyle) {
+            let prefixes = [
+                "aftermap-roads-",
+                "aftermap-road-selection-",
+                "aftermap-route-",
+                "aftermap-endpoints-",
+                "aftermap-report-location-",
+                "aftermap-incident-draft-",
+            ]
+            let matches: (String) -> Bool = { id in prefixes.contains { id.hasPrefix($0) } }
+            for id in style.layers.map(\.identifier).filter(matches) {
+                if let layer = style.layer(withIdentifier: id) { style.removeLayer(layer) }
+            }
+            for id in style.sources.map(\.identifier).filter(matches) {
+                if let source = style.source(withIdentifier: id) { style.removeSource(source) }
+            }
+        }
+
         private func addImagery(to style: MLNStyle) {
-            // Route preview and turn-by-turn guidance need an unobstructed map.
-            // Incident rasters remain available while inspecting incidents, but
-            // never cover streets, labels, or the route during navigation.
             guard store.showsSurveyImageryOnMap else { return }
             for (index, incident) in store.incidents.enumerated() {
-                let surveys = incident.publishedSurveys.sorted { $0.timestamp < $1.timestamp }
-                for (surveyIndex, imagery) in surveys.enumerated() {
-                    addSurvey(imagery, namespace: "incident-\(index)-\(surveyIndex)", to: style)
-                }
+                guard let imagery = incident.publishedSurveys.max(by: { $0.timestamp < $1.timestamp }) else { continue }
+                addSurvey(imagery, namespace: "incident-\(index)-latest", to: style)
             }
             for (index, imagery) in store.recoveryImagery.sorted(by: { $0.timestamp < $1.timestamp }).enumerated() {
                 addSurvey(imagery, namespace: "recovery-\(index)", to: style)
@@ -293,7 +320,8 @@ struct MapLibreWorldMap: UIViewRepresentable {
                     url: url,
                     bounds: imagery.bounds,
                     opacity: 1,
-                    minimumZoom: 9
+                    minimumZoom: 9,
+                    maximumZoom: imagery.detailTiles?.isEmpty == false ? 16.25 : 24
                 )
             }
             for (tileIndex, tile) in (imagery.detailTiles ?? []).enumerated() {
@@ -305,7 +333,8 @@ struct MapLibreWorldMap: UIViewRepresentable {
                     url: tileURL,
                     bounds: tile.bounds,
                     opacity: 1,
-                    minimumZoom: 16
+                    minimumZoom: 15.75,
+                    maximumZoom: 24
                 )
             }
         }
@@ -317,7 +346,8 @@ struct MapLibreWorldMap: UIViewRepresentable {
             url: URL,
             bounds: IncidentBounds,
             opacity: Double,
-            minimumZoom: Float
+            minimumZoom: Float,
+            maximumZoom: Float
         ) {
             let quad = MLNCoordinateQuad(
                 topLeft: CLLocationCoordinate2D(latitude: bounds.north, longitude: bounds.west),
@@ -331,7 +361,7 @@ struct MapLibreWorldMap: UIViewRepresentable {
             layer.rasterOpacity = NSExpression(forConstantValue: opacity)
             layer.rasterFadeDuration = NSExpression(forConstantValue: 0)
             layer.minimumZoomLevel = minimumZoom
-            layer.maximumZoomLevel = 24
+            layer.maximumZoomLevel = maximumZoom
             if let firstLabel = style.layers.first(where: { $0 is MLNSymbolStyleLayer }) {
                 style.insertLayer(layer, below: firstLabel)
             } else {

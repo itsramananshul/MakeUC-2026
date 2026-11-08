@@ -100,7 +100,7 @@ final class WorldMapStore: ObservableObject {
     @Published var mapStyle: MapStyle {
         didSet { defaults.set(mapStyle.rawValue, forKey: "aftermap.mapStyle") }
     }
-    @Published var showsIncidentSurveyImagery = false
+    @Published var showsIncidentSurveyImagery = true
 
     private let defaults: UserDefaults
     private let urlSession: URLSession
@@ -741,10 +741,7 @@ final class WorldMapStore: ObservableObject {
     }
 
     var showsSurveyImageryOnMap: Bool {
-        guard showsIncidentSurveyImagery else { return false }
-        guard navigationState == .idle else { return false }
-        if case .route = routeState { return false }
-        return true
+        showsIncidentSurveyImagery
     }
 
     var followsNavigationCamera: Bool {
