@@ -43,6 +43,7 @@
 .world-brand { height: 55px; padding: 0 15px; display: none; align-items: center; justify-content: space-between; flex: none; }
 .world-tray > .world-scroll { padding: 22px 19px 16px; }
 .world-tray .world-footer, .world-tray .mobile-directions, .mobile-sheet-handle { display: none; }
+.mobile-map-tools, .mobile-search-cancel { display: none; }
 .tray-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 21px; }
 .tray-heading { font-size: 27px; line-height: 1.13; margin: 0; font-weight: 700; letter-spacing: -.043em; }
 .search-pane > .tray-heading { margin-bottom: 17px; }
@@ -73,6 +74,7 @@
 .world-place > div { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
 .world-place > div > div { flex: 1; display: grid; gap: 4px; overflow-wrap: anywhere; }
 .world-place small { color: var(--world-muted); }
+.world-place .cincinnati-preview-actions { flex-wrap: wrap; margin: 0; }
 .world-nav { width: 100%; display: flex; align-items: center; gap: 9px; padding: 4px 6px; min-height: 39px;
   background: transparent; border: 0; border-radius: 8px; font-weight: 620; text-align: left; }
 .world-nav:hover { background: #e7eef3; }
@@ -173,6 +175,10 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
 .world-basemap:hover { background: #eef3f6; }
 .world-maptiler { position: absolute; z-index: 1; top: 214px; right: 19px; display: grid;
   place-items: center; padding: 4px; border-radius: 6px; background: #fffffff2; }
+.world-exercise-badge { position: absolute; z-index: 1; top: 18px; left: calc(var(--map-obstruction, 0px) + 15px);
+  max-width: calc(100% - var(--map-obstruction, 0px) - 85px); border: 1px solid #ffcc7a80; border-radius: 9px;
+  padding: 7px 10px; background: #302418f2; color: #ffe2aa; font-size: 12px; font-weight: 650; }
+.world-app:not(.with-world-sidebar) .world-exercise-badge { left: 60px; }
 .world-picking, .world-legend { position: absolute; display: flex; align-items: center; gap: 8px; z-index: 1;
   background: #ffffffee; border: 1px solid #d6dfe3; border-radius: 10px; padding: 6px 8px; box-shadow: 0 3px 14px #253b4826; }
 .world-picking { top: 17px; left: 50%; transform: translateX(-50%); font-size: 13px; font-weight: 650; }
@@ -329,3 +335,129 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
 .road-matches button:hover { background: #e7eef3; }
 .road-matches small { color: #52636e; }
 @media (max-width: 740px) { .road-finder input { font-size: 16px; } }
+
+@media (max-width: 740px) {
+  .world-main-map {
+    --mobile-sheet-size: 0px;
+    --mobile-sheet-compact: calc(124px + env(safe-area-inset-bottom, 0px));
+    --mobile-keyboard-inset: 0px;
+    background: #242426;
+    color-scheme: dark;
+  }
+  .world-main-map:has(> .world-sidebar[data-sheet="0"]) { --mobile-sheet-size: var(--mobile-sheet-compact); }
+  .world-main-map:has(> .world-sidebar[data-sheet="1"]) { --mobile-sheet-size: 53dvh; }
+  .world-main-map:has(> .world-sidebar[data-sheet="2"]) {
+    --mobile-sheet-size: max(92px, calc(100dvh - var(--mobile-keyboard-inset) - max(38px, env(safe-area-inset-top, 0px))));
+  }
+  .world-main-map > .world-stage { position: absolute; inset: 0; z-index: 0; }
+  .world-main-map > .world-sidebar {
+    --world-text: #f7f7f8;
+    --world-muted: #adadb2;
+    --world-line: #414145;
+    --mobile-surface: #1b1b1c;
+    --mobile-hover: #373739;
+    --mobile-blue: #62b0ff;
+    position: absolute;
+    inset: auto 0 var(--mobile-keyboard-inset);
+    margin: 0;
+    height: var(--drag-sheet-height, var(--mobile-sheet-size));
+    background: #272729;
+    color: var(--world-text);
+    border-color: #ffffff18;
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -5px 18px #10101338;
+  }
+  .world-main-map .mobile-sheet-handle { flex-basis: 21px; }
+  .world-main-map .mobile-sheet-handle span { width: 37px; background: #bfbfc3; }
+  .world-main-map .world-brand { height: 40px; padding-inline: 16px; }
+  .world-main-map [data-compact-search="true"] .world-brand { display: flex; }
+  .world-main-map .wordmark { font-size: 20px; font-weight: 650; letter-spacing: -.037em; min-height: 44px; }
+  .world-main-map .wordmark img { width: 23px; height: 23px; border-radius: 6px; }
+  .world-main-map .mobile-brand-actions .circle-button {
+    width: 44px; height: 44px; margin-right: -8px; color: var(--world-muted); background: transparent;
+  }
+  .world-main-map .world-tray > .world-scroll {
+    padding: 6px max(16px, env(safe-area-inset-right)) 14px max(16px, env(safe-area-inset-left));
+    overscroll-behavior: contain;
+  }
+  .world-main-map [data-compact-search="true"] .world-scroll { padding-bottom: 0; overflow: hidden; }
+  .world-main-map [data-compact-search="true"] :is(.world-place, .mobile-map-tools, .mobile-search-content, .sidebar-status),
+  .world-main-map [data-searching="true"]:has(.search-pane .has-text) :is(.world-place, .mobile-map-tools, .mobile-search-content),
+  .world-main-map [data-searching="true"] .world-footer { display: none; }
+  .world-main-map .search-pane .place-search-row { display: flex; align-items: center; gap: 10px; }
+  .world-main-map .search-pane .world-search {
+    flex: 1; min-width: 0; margin: 0; height: 46px; padding-left: 11px; border-radius: 15px;
+    background: var(--mobile-surface); border-color: transparent; color: var(--world-muted);
+  }
+  .world-main-map .search-pane .world-search:not(.has-text) button:disabled { display: none; }
+  .world-main-map .search-pane .world-search:focus-within { border-color: #328eff; }
+  .world-main-map .search-pane .world-search input { color: var(--world-text); }
+  .world-main-map .world-sidebar input::placeholder { color: var(--world-muted); }
+  .world-main-map .search-pane .world-search button { width: 36px; }
+  .world-main-map .search-pane .world-search.has-text button:disabled { display: none; }
+  .world-main-map [data-searching="true"] .mobile-search-cancel {
+    display: block; min-height: 44px; padding: 0 2px; border: 0; background: transparent;
+    color: var(--mobile-blue); font-size: 16px; flex: none;
+  }
+  .world-main-map .search-pane .world-results {
+    margin-top: 14px; padding: 0; border-radius: 15px; background: #111112; overflow: hidden;
+  }
+  .world-main-map .search-pane .world-result { min-height: 62px; border-radius: 0; padding: 9px 14px; gap: 11px; }
+  .world-main-map .search-pane .world-result + .world-result { border-top: 1px solid var(--world-line); }
+  .world-main-map .search-pane .world-result > svg:first-child {
+    width: 29px; height: 29px; flex: none; padding: 6px; border-radius: 50%; background: #5d5d63; color: #fff;
+  }
+  .world-main-map .search-pane .world-result strong { font-size: 16px; }
+  .world-main-map .search-pane .world-result small { font-size: 13px; }
+  .world-main-map .search-pane .world-results > .world-attribution { padding: 0 14px 9px; }
+  .world-main-map .mobile-map-tools { display: block; margin-top: 24px; }
+  .world-main-map .mobile-map-tools h2 { margin: 0 0 10px; font-size: 20px; letter-spacing: -.025em; }
+  .world-main-map .mobile-map-tools > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .world-main-map .mobile-map-tools .world-nav {
+    min-height: 50px; padding: 8px 10px; border-radius: 14px; background: var(--mobile-surface); font-size: 15px;
+  }
+  .world-main-map .mobile-map-tools .world-nav span { border-radius: 50%; background: #156bd1; color: #fff; flex: none; }
+  .world-main-map .mobile-map-tools .world-nav + .world-nav span { background: #a74d19; }
+  .world-main-map .world-sidebar :is(a, button.world-text) { color: var(--mobile-blue); }
+  .world-main-map .world-sidebar :is(.world-place, .direction-stops, .direction-modes button, .direction-card,
+    .route-maneuvers, .world-secondary, .selected-road, .road-finder input, .world-route-result) {
+    background-color: var(--mobile-surface); border-color: var(--world-line); color: var(--world-text);
+  }
+  .world-main-map .world-sidebar :is(.stop-finder + .stop-finder, .route-maneuvers li + li, .road-matches button) {
+    border-color: var(--world-line);
+  }
+  .world-main-map .world-sidebar :is(.route-maneuvers small, .world-route-result small, .road-matches small) { color: var(--world-muted); }
+  .world-main-map .world-sidebar .stop-finder .world-search { background: transparent; color: var(--world-text); }
+  .world-main-map .world-sidebar :is(.direction-modes button[aria-pressed="true"], .direction-card[data-selected="true"]) {
+    background-color: #096cce; color: #fff;
+  }
+  .world-main-map .world-sidebar .world-route-result.partial { background-color: #49351c; }
+  .world-main-map .world-sidebar .world-secondary[aria-pressed="true"] { background: #203f61; color: #d1e9ff; }
+  .world-main-map .world-sidebar :is(.world-result, .world-nav, .world-search button, .world-secondary, .incident-list button, .road-matches button):hover,
+  .world-main-map .world-sidebar .world-reports li.is-selected { background-color: var(--mobile-hover); }
+  .world-main-map .world-sidebar .road-matches button { color: var(--world-text); }
+  .world-main-map .world-sidebar .incident-error { color: #ffc2c8; }
+  .world-main-map .world-sidebar .sidebar-status { background: #203743; color: #e0f5ff; }
+  .world-main-map .world-sidebar .sidebar-status.incident-error { background: #512a34; color: #ffc2c8; }
+  .world-main-map .world-place { margin-top: 13px; padding: 12px; border-radius: 14px; }
+  .world-main-map .cincinnati-preview-actions a { min-height: 44px; }
+  .world-main-map :is(.maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right) {
+    bottom: var(--mobile-sheet-size);
+  }
+  .world-main-map .maplibregl-ctrl-attrib { font-size: 10px; line-height: 1.35; }
+  .world-main-map .maplibregl-ctrl-top-right { top: 52px; right: 2px; }
+  .world-main-map .maplibregl-ctrl-group {
+    background: #171b20ed; box-shadow: 0 2px 8px #0004; overflow: hidden;
+  }
+  .world-main-map .maplibregl-ctrl-group button + button { border-top-color: #ffffff21; }
+  .world-main-map .maplibregl-ctrl-group button .maplibregl-ctrl-icon { filter: invert(1); }
+  .world-main-map .world-basemap {
+    top: 10px; right: 12px; width: 44px; padding: 0; justify-content: center;
+    background: #171b20ed; color: #f7f7f8; font-size: 0; gap: 0;
+  }
+  .world-main-map .world-basemap svg { width: 19px; height: 19px; }
+  .world-main-map .world-maptiler { top: 201px; right: 12px; }
+  .world-main-map .world-legend { bottom: calc(var(--mobile-sheet-size) + 56px); color: #17212b; }
+  .world-main-map .world-stage:has(.maplibregl-compact-show) .world-legend { bottom: calc(var(--mobile-sheet-size) + 110px); }
+  .world-main-map :is(.world-map-error, .world-picking, .world-restore) { color: #17212b; }
+}

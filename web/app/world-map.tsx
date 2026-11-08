@@ -16,6 +16,7 @@ type Props = {
   onReport?: (id: string) => void;
   sidebarVisible?: boolean;
   recoveryImagery?: IncidentImagery[];
+  exerciseImagery?: IncidentImagery;
   incidentPreview?: { center: Coordinate; bounds: GeographicBounds } | null;
 };
 const style = "https://tiles.openfreemap.org/styles/liberty";
@@ -97,6 +98,7 @@ export default function WorldMap(props: Props) {
   const [ready, setReady] = useState(false);
   const [message, setMessage] = useState("");
   const [satellite, setSatellite] = useState(true);
+  const exerciseImagery = satellite ? props.exerciseImagery : undefined;
   const locationPicker = props.incidentPreview !== undefined;
   useEffect(() => { inputs.current = props; }, [props]);
   useEffect(() => {
@@ -166,12 +168,17 @@ export default function WorldMap(props: Props) {
   useEffect(() => {
     const view = map.current;
     if (!ready || !view || props.sidebarVisible === undefined) return;
-    const sidebar = props.sidebarVisible ? host.current?.closest(".world-app")?.querySelector(".world-sidebar") : null;
+    const app = host.current?.closest(".world-app");
+    const sidebar = props.sidebarVisible ? app?.querySelector(".world-sidebar") : null;
+    const mobileOverlay = app?.classList.contains("world-main-map");
     const desktop = matchMedia("(min-width: 741px)");
     function resizePadding() {
       if (!view) return;
-      const left = desktop.matches && sidebar ? Math.ceil(sidebar.getBoundingClientRect().width) : 0;
-      if (view.getPadding().left !== left) view.setPadding({ left, top: 0, right: 0, bottom: 0 });
+      const rect = sidebar?.getBoundingClientRect();
+      const left = desktop.matches && rect ? Math.ceil(rect.width) : 0;
+      const bottom = !desktop.matches && mobileOverlay && rect && app ? Math.min(Math.ceil(rect.height), Math.round(app.clientHeight * .53)) : 0;
+      const current = view.getPadding();
+      if (current.left !== left || current.bottom !== bottom) view.setPadding({ left, top: 0, right: 0, bottom });
     }
     const observer = new ResizeObserver(resizePadding);
     if (sidebar) observer.observe(sidebar);
@@ -215,10 +222,10 @@ export default function WorldMap(props: Props) {
     }] : []);
     set("markers", [
       ...(props.start ? [point(props.start, { kind: "start" })] : []),
-      ...(props.destination ? [point(props.destination, { kind: "destination" })] : []),
+      ...(props.destination && (!exerciseImagery || props.active) ? [point(props.destination, { kind: "destination" })] : []),
       ...(props.incidentPreview ? [point(props.incidentPreview.center, { kind: "incident" })] : []),
     ]);
-  }, [ready, props.incidents, props.active, props.route, props.start, props.destination, props.selectedRoad, props.incidentPreview]);
+  }, [ready, props.incidents, props.active, props.route, props.start, props.destination, props.selectedRoad, props.incidentPreview, exerciseImagery]);
 
   useEffect(() => {
     if (!map.current || !ready || locationPicker) return;
@@ -238,6 +245,7 @@ export default function WorldMap(props: Props) {
         ...incidents.filter(item => item.id !== active?.id).flatMap(item => activeSurveys(item).filter(showsArea)),
         ...(aerial && active && !active.resolvedAt ? activeSurveys(active) : []),
       ].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+      if (exerciseImagery && showsArea(exerciseImagery)) images.unshift(exerciseImagery);
       const next = new Map(images.map(image => [`after-survey-${image.url.split("/").at(-1)}`, image]));
       if (next.size === layers.size && [...next.keys()].every(id => layers.has(id))) return;
       for (const id of layers) if (!next.has(id)) {
@@ -246,22 +254,24 @@ export default function WorldMap(props: Props) {
         layers.delete(id);
       }
       for (const [id, image] of next) {
+        const before = image.url === exerciseImagery?.url ? "incident-boundary-fill" : surveyBefore;
         if (!layers.has(id)) {
           const [w, s, e, n] = boundsTuple(image.bounds);
           view.addSource(id, { type: "image", url: image.url, coordinates: [[w, n], [e, n], [e, s], [w, s]] });
-          view.addLayer({ id, type: "raster", source: id, paint: { "raster-fade-duration": 0 } }, surveyBefore);
+          view.addLayer({ id, type: "raster", source: id, paint: { "raster-fade-duration": 0 } }, before);
           layers.add(id);
-        } else view.moveLayer(id, surveyBefore);
+        } else view.moveLayer(id, before);
       }
     }
     renderSurveys();
     view.on("moveend", renderSurveys);
     view.on("resize", renderSurveys);
     return () => { view.off("moveend", renderSurveys); view.off("resize", renderSurveys); };
-  }, [locationPicker, props.active, props.aerial, props.incidents, props.recoveryImagery, ready]);
+  }, [locationPicker, props.active, props.aerial, props.incidents, props.recoveryImagery, exerciseImagery, ready]);
 
   return <div className={`world-canvas ${props.picking ? "is-picking" : ""}`}>
     <div ref={host} className="world-map" aria-label="Interactive world map" />
+    {exerciseImagery && !props.active && <span className="world-exercise-badge" role="status">Cincinnati imagery preview</span>}
     {!locationPicker && <button type="button" className="world-basemap" aria-pressed={satellite}
       aria-label="Satellite basemap" onClick={() => setSatellite(value => !value)}>
       {satellite ? <Satellite size={16} aria-hidden /> : <Layers2 size={16} aria-hidden />}

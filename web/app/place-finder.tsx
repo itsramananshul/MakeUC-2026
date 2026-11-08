@@ -4,9 +4,9 @@ import { ArrowRight, ChevronRight, MapPin, Search, X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { Place } from "@/lib/incident-types";
 
-export default function PlaceFinder({ label, initialValue = "", autoFocus = false, stop, onEdit, onFocus, onSelect }: {
+export default function PlaceFinder({ label, initialValue = "", autoFocus = false, stop, onEdit, onFocus, onSelect, onCancel }: {
   label: string; initialValue?: string; autoFocus?: boolean; stop?: "start" | "destination";
-  onEdit?: () => void; onFocus?: () => void; onSelect: (place: Place) => void;
+  onEdit?: () => void; onFocus?: () => void; onSelect: (place: Place) => void; onCancel?: () => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState(initialValue);
@@ -81,22 +81,33 @@ export default function PlaceFinder({ label, initialValue = "", autoFocus = fals
     current.current?.abort(); setDraft(value); setCommitted(""); setMatches(null); setStatus("");
     onEdit?.();
   }
+  function cancel() {
+    current.current?.abort();
+    setDraft(committed); setMatches(null); setStatus("");
+    setFocused(false);
+    input.current?.blur();
+    onCancel?.();
+  }
 
   return <div className={`place-finder${stop ? ` stop-finder ${stop}` : ""}`} onFocus={() => setFocused(true)}
     onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}>
-    <form className={`world-search${draft ? " has-text" : ""}`} onSubmit={submit}>
-      {stop ? <span className="stop-dot" aria-hidden /> : <Search size={18} aria-hidden />}
-      <input ref={input} aria-label={label} name={stop ?? "place"} autoComplete="off" autoFocus={autoFocus}
-        placeholder={stop ? (stop === "start" ? "Starting point" : "Destination") : "Search a place or address…"}
-        maxLength={120} value={draft} onFocus={onFocus} onChange={event => edit(event.target.value)}
-        onKeyDown={event => { if (event.key === "Escape") setFocused(false); }} />
-      {draft && <button type="button" aria-label={`Clear ${label.toLowerCase()}`} onClick={() => { edit(""); input.current?.focus(); }}>
-        <X size={15} aria-hidden />
-      </button>}
-      {(!stop || query !== committed) && <button type="submit" aria-label="Search" disabled={query.length < 2}>
-        <ArrowRight size={17} aria-hidden />
-      </button>}
-    </form>
+    <div className="place-search-row">
+      <form className={`world-search${draft ? " has-text" : ""}`} onSubmit={submit}>
+        {stop ? <span className="stop-dot" aria-hidden /> : <Search size={18} aria-hidden />}
+        <input ref={input} aria-label={label} name={stop ?? "place"} autoComplete="off" autoFocus={autoFocus}
+          placeholder={stop ? (stop === "start" ? "Starting point" : "Destination") : "Search a place or address…"}
+          maxLength={120} value={draft} onFocus={onFocus} onChange={event => edit(event.target.value)}
+          enterKeyHint="search"
+          onKeyDown={event => { if (event.key === "Escape") setFocused(false); }} />
+        {draft && <button type="button" aria-label={`Clear ${label.toLowerCase()}`} onClick={() => { edit(""); input.current?.focus(); }}>
+          <X size={15} aria-hidden />
+        </button>}
+        {(!stop || query !== committed) && <button type="submit" aria-label="Search" disabled={query.length < 2}>
+          <ArrowRight size={17} aria-hidden />
+        </button>}
+      </form>
+      {onCancel && <button className="mobile-search-cancel" type="button" onClick={cancel}>Cancel</button>}
+    </div>
     {visible && status && <small className="direction-search-status" role="status">{status}</small>}
     {!!results.length && <div className="world-results" aria-label={`${label} results`}>
       {results.map(item => <button key={item.id} type="button" className="world-result" onClick={() => choose(item)}>

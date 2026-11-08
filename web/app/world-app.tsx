@@ -5,9 +5,11 @@ import {
   Crosshair, Flag, Footprints, Globe, Info, KeyRound, Layers3, MapPin, PanelLeft, Plus, Route, Satellite, Search, ShieldAlert, X,
 } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { distanceMeters, within, type Coordinate, type GeographicBounds, type Incident, type IncidentImagery, type IncidentRoute, type IncidentSummary, type Place, type TravelMode } from "@/lib/incident-types";
 import { crossesIncident } from "@/lib/route-boundaries";
+import { cincinnatiFloodImagery, isCincinnati } from "@/lib/cincinnati-exercise";
 import { fetchJson, incidentPath, postJson } from "@/lib/world-client";
 import { AccessKey, CreateIncident, Modal, ReportIncident, ResolveIncident, SurveyUpload } from "./incident-dialogs";
 import PlaceFinder from "./place-finder";
@@ -50,6 +52,7 @@ export default function WorldApp() {
   const [focus, setFocus] = useState<Focus | null>(null);
   const [camera, setCamera] = useState({ center: earth, zoom: 1.65 });
   const [place, setPlace] = useState<Place | null>(null);
+  const [showCincinnatiFlood, setShowCincinnatiFlood] = useState(true);
   const [tripOpen, setTripOpen] = useState(false);
   const [incidentPanel, setIncidentPanel] = useState(false);
   const [showSteps, setShowSteps] = useState(false);
@@ -73,7 +76,9 @@ export default function WorldApp() {
   const [access, setAccess] = useState("");
   const [importing, setImporting] = useState(false);
   const [sidebar, setSidebar] = useState(true);
-  const [sheet, setSheet] = useState(1);
+  const [sheet, setSheet] = useState(0);
+  const [mobileSearch, setMobileSearch] = useState(false);
+  const mapShell = useRef<HTMLElement>(null);
   const sheetDrag = useRef<{ startY: number; height: number; moved: boolean } | null>(null);
   const lastWheel = useRef(0);
   const [stale, setStale] = useState(false);
@@ -110,13 +115,30 @@ export default function WorldApp() {
   }
   useEffect(() => {
     const id = new URLSearchParams(location.search).get("incident") ?? "";
-    if (id) setSelected(id);
+    if (id) { setSelected(id); setSheet(1); }
     void refreshList().catch(error => setError(getMessage(error)));
     const timer = window.setInterval(() => {
       if (!document.hidden) void refreshList().catch(() => {});
     }, 15_000);
     return () => clearInterval(timer);
   }, []);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const shell = mapShell.current;
+    if (!mobileSearch || !viewport || !shell) return;
+    const update = () => {
+      const inset = viewport.scale === 1 ? Math.max(0, shell.clientHeight - viewport.height - viewport.offsetTop) : 0;
+      shell.style.setProperty("--mobile-keyboard-inset", `${inset}px`);
+    };
+    update();
+    viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
+    return () => {
+      viewport.removeEventListener("resize", update);
+      viewport.removeEventListener("scroll", update);
+      shell.style.removeProperty("--mobile-keyboard-inset");
+    };
+  }, [mobileSearch]);
   useEffect(() => {
     if (!selected) return;
     let cancelled = false;
@@ -147,7 +169,7 @@ export default function WorldApp() {
     if (id === selected) { if (active) setFocus({ bounds: active.bounds }); return; }
     setActive(null); setSelected(id); setRoadId(null); setFocusedReport(""); setRoadQuery(""); setPoints([]); setStale(false); setError("");
     resetRoute(); setTripOpen(false); setIncidentPanel(!!id); setPicking(null); setStart(null); setDestination(null);
-    setPlace(null); setSidebar(true); setSheet(1);
+    setPlace(null); setSidebar(true); setSheet(1); setMobileSearch(false);
     const url = new URL(location.href);
     if (id) url.searchParams.set("incident", id); else url.searchParams.delete("incident");
     history.replaceState(null, "", url);
@@ -167,7 +189,10 @@ export default function WorldApp() {
 
   function choosePlace(item: Place) {
     setPlace(item); setTripOpen(false); setIncidentPanel(false); setPicking(null); resetRoute(); setMessage("");
-    setFocus({ point: item, zoom: 15 }); setSheet(1);
+    setShowCincinnatiFlood(true);
+    setFocus(isCincinnati(item) ? { bounds: cincinnatiFloodImagery.bounds } : { point: item, zoom: 15 });
+    setSheet(1);
+    if (mobileSearch) closeMobileSearch();
   }
   function resetRoute() { setRoute(null); setRouteIndex(0); setRouteError(""); setRouting(false); setShowSteps(false); }
   function setTripPoint(side: Stop, point: TripPoint | null) {
@@ -243,16 +268,18 @@ export default function WorldApp() {
   }
   function startTrip(point?: Place) {
     if (!tripOpen) setMode(active && !active.resolvedAt ? "walking" : "driving");
-    setTripOpen(true); setIncidentPanel(false); setShowSteps(false); setSheet(1);
+    setTripOpen(true); setIncidentPanel(false); setShowSteps(false); setSheet(1); setMobileSearch(false);
     if (!tripOpen || point) resetRoute();
     if (!start && deviceOrigin) setStart(deviceOrigin);
     if (point) setDestination({ ...point, label: point.name });
   }
   function selectRoad(id: string) {
     setRoadId(id); setPoints([]); setSidebar(true); setIncidentPanel(true);
+    setSheet(value => Math.max(1, value));
   }
   function selectReport(id: string) {
     setSidebar(true); setIncidentPanel(true);
+    setSheet(value => Math.max(1, value));
     setFocusedReport(id);
     requestAnimationFrame(() => {
       const card = document.getElementById(`report-${id}`);
@@ -263,11 +290,23 @@ export default function WorldApp() {
   const pickLabel = picking === "start" ? "Choose a starting point" : picking === "destination" ? "Choose a destination" :
     picking === "point" ? "Choose a report location" : points.length ? "Choose the end of the passage" : "Choose the start of the passage";
   const directionsVisible = tripOpen && !incidentPanel;
+  const searchVisible = !directionsVisible && !incidentPanel;
+  const compactSearch = sheet === 0 && searchVisible && !picking;
+  const cincinnatiSelected = !!place && isCincinnati(place);
+  const cincinnatiBounds = cincinnatiFloodImagery.bounds;
+  const overlapsCincinnati = incidents.some(({ bounds }) => bounds.west < cincinnatiBounds.east &&
+    bounds.east > cincinnatiBounds.west && bounds.south < cincinnatiBounds.north && bounds.north > cincinnatiBounds.south);
+  const canPreviewCincinnati = cincinnatiSelected && !active && !overlapsCincinnati;
+  function closeMobileSearch() {
+    setMobileSearch(false);
+    mapShell.current?.querySelector<HTMLInputElement>("[name=place]")?.blur();
+  }
   function openSearch() {
     setTripOpen(false); setIncidentPanel(false); setPicking(null); resetRoute();
     requestAnimationFrame(() => document.querySelector<HTMLInputElement>(".world-scroll [name=place]")?.focus());
   }
   function shiftSheet(direction: number) {
+    if (direction < 0 && mobileSearch) closeMobileSearch();
     setSheet(value => Math.max(0, Math.min(2, value + direction)));
   }
   function dragSheet(event: PointerEvent<HTMLButtonElement>) {
@@ -276,7 +315,7 @@ export default function WorldApp() {
     const delta = drag.startY - event.clientY;
     if (!drag.moved && Math.abs(delta) < 7) return;
     drag.moved = true;
-    const height = Math.max(113, Math.min((window.visualViewport?.height ?? innerHeight) * .81, drag.height + delta));
+    const height = Math.max(120, Math.min((window.visualViewport?.height ?? innerHeight) - 36, drag.height + delta));
     event.currentTarget.closest<HTMLElement>(".world-sidebar")?.style.setProperty("--drag-sheet-height", `${height}px`);
   }
   function releaseSheet(event: PointerEvent<HTMLButtonElement>) {
@@ -288,9 +327,10 @@ export default function WorldApp() {
     event.currentTarget.closest<HTMLElement>(".world-sidebar")?.style.removeProperty("--drag-sheet-height");
   }
 
-  return <main className={`world-app ${sidebar ? "with-world-sidebar" : ""}`}>
+  return <main ref={mapShell} className={`world-app world-main-map ${sidebar ? "with-world-sidebar" : ""}`}>
     <a className="world-skip" href="#map-view">Skip to map</a>
-    {sidebar && <aside className="world-sidebar" data-sheet={picking ? 0 : sheet} aria-label="Map controls">
+    {sidebar && <aside className="world-sidebar" data-sheet={picking ? 0 : sheet}
+      data-compact-search={compactSearch} data-searching={searchVisible && mobileSearch} aria-label="Map controls">
       <nav className="world-rail" aria-label="Map views">
         <header>
           <button className="rail-wordmark" type="button" onClick={openSearch}>
@@ -319,7 +359,10 @@ export default function WorldApp() {
           }}
           onPointerMove={dragSheet} onPointerUp={releaseSheet} onPointerCancel={releaseSheet}
           onClick={() => {
-            if (!sheetDrag.current?.moved) setSheet(value => value === 2 ? 0 : value + 1);
+            if (!sheetDrag.current?.moved) {
+              if (mobileSearch) closeMobileSearch();
+              setSheet(value => value === 2 ? 0 : value + 1);
+            }
             sheetDrag.current = null;
           }}
           onKeyDown={event => {
@@ -332,18 +375,24 @@ export default function WorldApp() {
             }
           }}><span /></button>
         <header className="world-brand">
-          <button className="wordmark" type="button" onClick={() => { chooseIncident(""); setFocus({ point: earth, zoom: 1.65 }); }}>
+          <button className="wordmark" type="button" onClick={() => { chooseIncident(""); setFocus({ point: earth, zoom: 1.65 }); setSheet(0); }}>
             <Image src="/icon.png" alt="" width={28} height={28} unoptimized />Gaslight Maps
           </button>
           <div className="mobile-brand-actions">
             {incidentPanel && <button className="circle-button" aria-label="Search" onClick={openSearch}><Search size={17} /></button>}
-            <button className="circle-button" aria-label="Hide sidebar" onClick={() => setSidebar(false)}><PanelLeft size={17} /></button>
+            <button className="circle-button" aria-label="Hide sidebar" onClick={() => { closeMobileSearch(); setSidebar(false); }}><PanelLeft size={17} /></button>
           </div>
         </header>
         <div className="world-scroll">
-        <div className="search-pane" hidden={directionsVisible || incidentPanel}>
+        <div className="search-pane" hidden={!searchVisible}>
           <h2 className="tray-heading">Search</h2>
-          <PlaceFinder label="Search places" onFocus={() => setSheet(2)} onSelect={choosePlace} />
+          <PlaceFinder label="Search places" onFocus={() => {
+            if (matchMedia("(max-width: 740px)").matches) setMobileSearch(true);
+            setSheet(2);
+          }} onSelect={choosePlace} onCancel={() => {
+            closeMobileSearch(); setSheet(place ? 1 : 0);
+            mapShell.current?.querySelector<HTMLButtonElement>(".mobile-sheet-handle")?.focus({ preventScroll: true });
+          }} />
           {place && <div className="world-place">
             <div><MapPin size={19} /><div><strong>{place.name}</strong><small>{place.detail}</small></div>
               <button type="button" className="circle-button" aria-label="Clear place" onClick={() => setPlace(null)}><X size={15} /></button></div>
@@ -351,8 +400,24 @@ export default function WorldApp() {
               <button className="world-primary" type="button" onClick={() => startTrip(place)}><Route size={15} /> Directions</button>
               {!active && <button className="world-secondary" type="button" onClick={() => { setPicking(null); setModal("create"); }}><Plus size={15} /> Report here</button>}
             </div>
+            {cincinnatiSelected && <div className="cincinnati-preview-actions">
+              {canPreviewCincinnati && <button className="world-secondary" type="button" aria-pressed={showCincinnatiFlood}
+                onClick={() => {
+                  if (!showCincinnatiFlood) setFocus({ bounds: cincinnatiBounds });
+                  setShowCincinnatiFlood(!showCincinnatiFlood);
+                }}><Satellite size={15} aria-hidden /> Flood imagery</button>}
+              <Link className="world-text" href="/exercise/cincinnati">Open flood map <ChevronRight size={15} aria-hidden /></Link>
+            </div>}
           </div>}
-          <button type="button" className="world-nav mobile-directions" onClick={() => startTrip()}><span><Route size={17} /></span> Directions <ChevronRight size={15} /></button>
+          <section className="mobile-map-tools" aria-label="Map tools">
+            <h2>Map tools</h2>
+            <div>
+              <button type="button" className="world-nav" onClick={() => startTrip()}><span><Route size={17} /></span> Directions</button>
+              <button type="button" className="world-nav" onClick={() => {
+                closeMobileSearch(); setIncidentPanel(true); setSheet(1);
+              }}><span><ShieldAlert size={17} /></span> Incidents</button>
+            </div>
+          </section>
         </div>
 
         {directionsVisible && (showSteps && routeOption ? <section className="route-detail-pane">
@@ -444,7 +509,7 @@ export default function WorldApp() {
           </div>}
         </section>)}
 
-        {!directionsVisible && (active ? <section className="world-section active-incident">
+        {!directionsVisible && (active ? <section className="world-section active-incident mobile-search-content">
           {incidentPanel && <button type="button" className="world-nav mobile-directions" onClick={() => startTrip()}><span><Route size={17} /></span> Directions <ChevronRight size={15} /></button>}
           <button type="button" className="world-text" onClick={() => chooseIncident("")}><ArrowLeft size={15} /> All incidents</button>
           <h1>{active.name}</h1>
@@ -493,7 +558,7 @@ export default function WorldApp() {
               } catch (error) { setError(getMessage(error)); }
             }}>Download evidence photo</button>}
           </li>)}</ul> : <p className="world-hint">Confirmed reports will appear here.</p>}
-        </section> : <section className="world-section">
+        </section> : <section className="world-section mobile-search-content">
           <header><h2><ShieldAlert size={16} /> Incidents</h2>
             <button className="world-text" type="button" onClick={() => { setPicking(null); setModal("create"); }}><Plus size={16} /> Report incident</button></header>
           {incidents.length ? <ul className="incident-list">{incidents.map(item => <li key={item.id}><button type="button" onClick={() => chooseIncident(item.id)}>
@@ -509,6 +574,7 @@ export default function WorldApp() {
     </aside>}
     <section id="map-view" className="world-stage" aria-label="Map">
       <WorldMap incidents={incidents} recoveryImagery={recoveryImagery} active={active} focus={focus} route={visibleRoute}
+        exerciseImagery={canPreviewCincinnati && showCincinnatiFlood && searchVisible ? cincinnatiFloodImagery : undefined}
         start={tripOpen ? start : null} destination={tripOpen ? destination : place}
         selectedRoad={roadId} aerial={aerial} picking={!!picking} sidebarVisible={sidebar} onCamera={setCamera}
         onPoint={choosePoint} onRoad={selectRoad} onIncident={chooseIncident} onReport={selectReport} />

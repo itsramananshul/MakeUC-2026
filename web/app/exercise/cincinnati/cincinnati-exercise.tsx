@@ -15,6 +15,7 @@ const noop = () => {};
 export default function CincinnatiExercise({ incident }: { incident: Incident }) {
   const [aerial, setAerial] = useState(true);
   const [showRoute, setShowRoute] = useState(false);
+  const mapIncident = useMemo(() => ({ ...incident, imagery: null }), [incident]);
   const route = useMemo(() => showRoute ? incidentRoute(incident, origin, destination) : null, [showRoute, incident]);
   const focus = useMemo(() => showRoute ? { point: routeCenter, zoom: 17.8 } :
     { bounds: incident.imagery?.bounds ?? incident.bounds }, [showRoute, incident]);
@@ -25,7 +26,7 @@ export default function CincinnatiExercise({ incident }: { incident: Incident })
         <div className="world-scroll">
           <Link className="world-text" href="/"><ArrowLeft size={15} /> World map</Link>
           <section className="world-section active-incident">
-            <p className="incident-caption">Exercise · Fictional flood</p>
+          <p className="incident-caption">Aerial imagery preview</p>
             <h1>Cincinnati flood</h1>
             <p className="world-hint">Explore the downtown map stitched from five georeferenced images. The red segment shows a reported closure on East Central Parkway.</p>
             <div className="world-action-row">
@@ -41,7 +42,7 @@ export default function CincinnatiExercise({ incident }: { incident: Incident })
       </div>
     </aside>
     <section className="world-stage" aria-label="Cincinnati exercise map">
-      <WorldMap active={incident} incidents={[]} focus={focus} route={route}
+      <WorldMap active={mapIncident} incidents={[]} focus={focus} route={route} exerciseImagery={aerial ? incident.imagery ?? undefined : undefined}
         start={showRoute ? origin : null} destination={showRoute ? destination : null} selectedRoad={null}
         aerial={aerial} picking={false} sidebarVisible onCamera={noop} onPoint={noop} onRoad={noop} onIncident={noop} />
     </section>
