@@ -4,7 +4,13 @@ import UIKit
 
 struct MapLibreWorldMap: UIViewRepresentable {
     @ObservedObject var store: WorldMapStore
+    var onMapTap: ((CLLocationCoordinate2D) -> Void)?
     @Environment(\.colorScheme) private var colorScheme
+
+    init(store: WorldMapStore, onMapTap: ((CLLocationCoordinate2D) -> Void)? = nil) {
+        self.store = store
+        self.onMapTap = onMapTap
+    }
 
     static let lightStyleURL = URL(string: "https://tiles.openfreemap.org/styles/liberty")!
     static let darkStyleURL = URL(string: "https://tiles.openfreemap.org/styles/fiord")!
@@ -19,7 +25,7 @@ struct MapLibreWorldMap: UIViewRepresentable {
 
     private var baseStyleURL: URL { Self.styleURL(for: store.mapStyle, colorScheme: colorScheme) }
 
-    func makeCoordinator() -> Coordinator { Coordinator(store: store, baseStyleURL: baseStyleURL) }
+    func makeCoordinator() -> Coordinator { Coordinator(store: store, baseStyleURL: baseStyleURL, onMapTap: onMapTap) }
 
     func makeUIView(context: Context) -> MLNMapView {
         let map = MLNMapView(frame: .zero, styleURL: baseStyleURL)
@@ -37,6 +43,7 @@ struct MapLibreWorldMap: UIViewRepresentable {
 
     func updateUIView(_ map: MLNMapView, context: Context) {
         context.coordinator.store = store
+        context.coordinator.onMapTap = onMapTap
         context.coordinator.applyBaseStyle(baseStyleURL, to: map)
         context.coordinator.refreshStyle()
         if context.coordinator.lastLocationRequestRevision != store.locationRequestRevision {
@@ -59,10 +66,12 @@ struct MapLibreWorldMap: UIViewRepresentable {
         private var isStyleReady = false
         private var renderedSignature = ""
         private var baseStyleURL: URL
+        var onMapTap: ((CLLocationCoordinate2D) -> Void)?
 
-        init(store: WorldMapStore, baseStyleURL: URL) {
+        init(store: WorldMapStore, baseStyleURL: URL, onMapTap: ((CLLocationCoordinate2D) -> Void)?) {
             self.store = store
             self.baseStyleURL = baseStyleURL
+            self.onMapTap = onMapTap
         }
 
         func applyBaseStyle(_ url: URL, to mapView: MLNMapView) {
@@ -92,6 +101,11 @@ struct MapLibreWorldMap: UIViewRepresentable {
             guard recognizer.state == .ended, let map = mapView else { return }
             let point = recognizer.location(in: map)
             let coordinate = map.convert(point, toCoordinateFrom: map)
+
+            if let onMapTap {
+                onMapTap(coordinate)
+                return
+            }
 
             if store.selectionMode != nil {
                 store.chooseCoordinate(coordinate)
@@ -135,6 +149,7 @@ struct MapLibreWorldMap: UIViewRepresentable {
             addRoute(to: style)
             addEndpoints(to: style)
             addReportLocation(to: style)
+            addIncidentDraftCenter(to: style)
         }
 
         private var styleSignature: String {
@@ -144,6 +159,7 @@ struct MapLibreWorldMap: UIViewRepresentable {
             let origin = store.origin.map { "\($0.latitude),\($0.longitude)" } ?? "-"
             let destination = store.destination.map { "\($0.latitude),\($0.longitude)" } ?? "-"
             let reportLocation = store.reportLocation.map { "\($0.latitude),\($0.longitude)" } ?? "-"
+            let incidentDraftCenter = store.incidentDraftCenter.map { "\($0.latitude),\($0.longitude)" } ?? "-"
             let route: String
             switch store.routeState {
             case .idle: route = "idle"
@@ -152,7 +168,7 @@ struct MapLibreWorldMap: UIViewRepresentable {
             case let .route(response, affected):
                 route = "\(response.status.rawValue):\(response.coordinates.count):\(response.distanceMeters):\(affected ?? "-")"
             }
-            return [store.mapStyle.rawValue, incidentVersions, detail, selectedRoad, origin, destination, reportLocation, route]
+            return [store.mapStyle.rawValue, incidentVersions, detail, selectedRoad, origin, destination, reportLocation, incidentDraftCenter, route]
                 .joined(separator: "#")
         }
 
@@ -345,6 +361,27 @@ struct MapLibreWorldMap: UIViewRepresentable {
             let circle = MLNCircleStyleLayer(identifier: "aftermap-report-location-circle", source: source)
             circle.circleColor = NSExpression(forConstantValue: UIColor.systemOrange)
             circle.circleRadius = NSExpression(forConstantValue: 8)
+            circle.circleStrokeColor = NSExpression(forConstantValue: UIColor.white)
+            circle.circleStrokeWidth = NSExpression(forConstantValue: 2)
+            style.addLayer(circle)
+        }
+
+        private func addIncidentDraftCenter(to style: MLNStyle) {
+            guard let location = store.incidentDraftCenter else { return }
+            let feature = MLNPointFeature()
+            feature.coordinate = location.coordinate
+            let source = MLNShapeSource(identifier: "aftermap-incident-draft-source", shape: feature, options: nil)
+            style.addSource(source)
+
+            let halo = MLNCircleStyleLayer(identifier: "aftermap-incident-draft-halo", source: source)
+            halo.circleColor = NSExpression(forConstantValue: UIColor.white)
+            halo.circleRadius = NSExpression(forConstantValue: 14)
+            halo.circleOpacity = NSExpression(forConstantValue: 0.92)
+            style.addLayer(halo)
+
+            let circle = MLNCircleStyleLayer(identifier: "aftermap-incident-draft-circle", source: source)
+            circle.circleColor = NSExpression(forConstantValue: UIColor.systemRed)
+            circle.circleRadius = NSExpression(forConstantValue: 9)
             circle.circleStrokeColor = NSExpression(forConstantValue: UIColor.white)
             circle.circleStrokeWidth = NSExpression(forConstantValue: 2)
             style.addLayer(circle)

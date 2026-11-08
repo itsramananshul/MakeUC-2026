@@ -70,6 +70,7 @@ final class WorldMapStore: ObservableObject {
     @Published private(set) var locationRequestRevision = 0
     @Published var reportLocation: IncidentCoordinate?
     @Published private(set) var reportLocationRevision = 0
+    @Published var incidentDraftCenter: IncidentCoordinate?
     @Published var mapStyle: MapStyle {
         didSet { defaults.set(mapStyle.rawValue, forKey: "aftermap.mapStyle") }
     }
@@ -80,6 +81,7 @@ final class WorldMapStore: ObservableObject {
     private enum PendingLocationUse {
         case origin(userInitiated: Bool)
         case report
+        case incident
     }
     private var pendingLocationUse: PendingLocationUse?
     private var isIncidentPreviewMode = false
@@ -259,6 +261,11 @@ final class WorldMapStore: ObservableObject {
         locationRequestRevision += 1
     }
 
+    func requestCurrentLocationForIncident() {
+        pendingLocationUse = .incident
+        locationRequestRevision += 1
+    }
+
     func clearReportLocation() {
         reportLocation = nil
     }
@@ -281,6 +288,9 @@ final class WorldMapStore: ObservableObject {
             reportLocation = value
             reportLocationRevision += 1
             focus(on: value, zoom: 16)
+        case .incident:
+            incidentDraftCenter = value
+            focus(on: value, zoom: 15)
         case nil:
             return
         }
@@ -328,9 +338,17 @@ final class WorldMapStore: ObservableObject {
         do {
             if let incident = endpointIncident {
                 let response = try await client.route(incidentId: incident.id, origin: origin, destination: destination)
-                routeState = response.status == .unavailable
-                    ? .unavailable(response.reason)
-                    : .route(response, affectedIncidentName: incident.name)
+                if response.status == .unavailable {
+                    routeState = .unavailable(response.reason)
+                } else if let other = incidents.first(where: {
+                    $0.id != incident.id && $0.bounds.intersects(response.coordinates)
+                }) {
+                    routeState = .unavailable(
+                        "The verified route for \(incident.name) also enters \(other.name), so Gaslight Maps withheld it pending cross-incident verification."
+                    )
+                } else {
+                    routeState = .route(response, affectedIncidentName: incident.name)
+                }
                 return
             }
 
@@ -346,6 +364,33 @@ final class WorldMapStore: ObservableObject {
             }
         } catch {
             routeState = .unavailable(error.localizedDescription)
+        }
+    }
+
+    func createIncident(name: String, center: IncidentCoordinate, widthKilometers: Double, operatorKey: String) async -> IncidentCreationResponse? {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedName.count >= 2 else {
+            notice = "Enter a name for the incident."
+            return nil
+        }
+        guard let bounds = IncidentBounds.square(center: center, widthKilometers: widthKilometers) else {
+            notice = "Choose an incident area under 10 km across and away from the map edge."
+            return nil
+        }
+        do {
+            let response = try await client.createIncident(
+                name: trimmedName,
+                bounds: bounds,
+                operatorKey: operatorKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            reportKey = response.key
+            incidents.removeAll { $0.id == response.incident.id }
+            incidents.insert(response.incident, at: 0)
+            incidentDraftCenter = nil
+            return response
+        } catch {
+            notice = error.localizedDescription
+            return nil
         }
     }
 
@@ -416,6 +461,80 @@ final class WorldMapStore: ObservableObject {
             reportLocation = nil
             notice = road.map { "Evidence added to \($0.label)." } ?? "Field report added to \(incident.name)."
             await refreshIncidents()
+            return true
+        } catch {
+            notice = error.localizedDescription
+            return false
+        }
+    }
+
+    func uploadGeoTIFFs(_ files: [IncidentSurveyFile]) async -> Bool {
+        guard let incident = selectedIncident else {
+            notice = "Select an incident before adding aerial imagery."
+            return false
+        }
+        guard !reportKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            notice = "Enter the incident access key in Settings first."
+            return false
+        }
+        guard !files.isEmpty, files.count <= 8 else {
+            notice = "Choose one to eight georeferenced TIFF files."
+            return false
+        }
+        guard files.reduce(0, { $0 + $1.data.count }) <= 72 * 1024 * 1024 else {
+            notice = "Choose up to 72 MB of imagery."
+            return false
+        }
+        do {
+            let detail = try await client.uploadGeoTIFFs(incidentId: incident.id, key: reportKey, files: files)
+            incidentDetail = detail
+            let summary = Incident(
+                id: detail.id,
+                name: detail.name,
+                kind: detail.kind,
+                bounds: detail.bounds,
+                imagery: detail.imagery,
+                version: detail.version,
+                roadCount: detail.roadCount
+            )
+            selectedIncident = summary
+            incidents.removeAll { $0.id == summary.id }
+            incidents.insert(summary, at: 0)
+            notice = "Aerial survey published and aligned to the map."
+            return true
+        } catch {
+            notice = error.localizedDescription
+            return false
+        }
+    }
+
+    func importIncidentRoads() async -> Bool {
+        guard let incident = selectedIncident else {
+            notice = "Select an incident before importing roads."
+            return false
+        }
+        guard !reportKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            notice = "Enter the incident access key in Settings first."
+            return false
+        }
+        do {
+            let detail = try await client.importRoads(incidentId: incident.id, key: reportKey)
+            incidentDetail = detail
+            let summary = Incident(
+                id: detail.id,
+                name: detail.name,
+                kind: detail.kind,
+                bounds: detail.bounds,
+                imagery: detail.imagery,
+                version: detail.version,
+                roadCount: detail.roadCount
+            )
+            selectedIncident = summary
+            incidents.removeAll { $0.id == summary.id }
+            incidents.insert(summary, at: 0)
+            notice = detail.roadCount == 0
+                ? "No mapped roads were found inside this incident."
+                : "Imported \(detail.roadCount) road segments."
             return true
         } catch {
             notice = error.localizedDescription

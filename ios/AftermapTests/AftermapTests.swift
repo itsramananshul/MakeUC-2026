@@ -143,6 +143,90 @@ final class AftermapTests: XCTestCase {
         ]))
     }
 
+    func testIncidentBoundsCreatesBackendCompatibleSquare() throws {
+        let center = IncidentCoordinate(latitude: 39.1031, longitude: -84.5120)
+        let bounds = try XCTUnwrap(IncidentBounds.square(center: center, widthKilometers: 2))
+
+        XCTAssertEqual((bounds.south + bounds.north) / 2, center.latitude, accuracy: 0.000_001)
+        XCTAssertEqual((bounds.west + bounds.east) / 2, center.longitude, accuracy: 0.000_001)
+        XCTAssertNil(IncidentBounds.square(center: center, widthKilometers: 11))
+        XCTAssertNil(IncidentBounds.square(
+            center: IncidentCoordinate(latitude: 84.999, longitude: 179.999),
+            widthKilometers: 4
+        ))
+    }
+
+    func testCreateIncidentUsesOperatorBearerAndSharedBoundsContract() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/incidents")
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer workspace-secret")
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: try requestBody(request)) as? [String: Any])
+            XCTAssertEqual(object["name"] as? String, "Riverside flood")
+            let bounds = try XCTUnwrap(object["bounds"] as? [String: Double])
+            XCTAssertLessThan(bounds["west"]!, bounds["east"]!)
+            XCTAssertLessThan(bounds["south"]!, bounds["north"]!)
+            let data = #"{"incident":{"id":"flood-1","name":"Riverside flood","kind":"incident","bounds":{"west":-84.52,"south":39.10,"east":-84.51,"north":39.11},"imagery":null,"version":1,"roadCount":0},"key":"incident-secret"}"#.data(using: .utf8)!
+            return (HTTPURLResponse(url: request.url!, statusCode: 201, httpVersion: nil, headerFields: nil)!, data)
+        }
+        let center = IncidentCoordinate(latitude: 39.105, longitude: -84.515)
+        let bounds = try XCTUnwrap(IncidentBounds.square(center: center, widthKilometers: 1))
+        let response = try await IncidentAPIClient(baseURL: "https://aftermap.example", urlSession: session)
+            .createIncident(name: "Riverside flood", bounds: bounds, operatorKey: "workspace-secret")
+
+        XCTAssertEqual(response.incident.id, "flood-1")
+        XCTAssertEqual(response.key, "incident-secret")
+    }
+
+    func testGeoTIFFUploadUsesAuthorizedMultipartContract() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/incidents/flood-1/imagery")
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer incident-secret")
+            XCTAssertTrue(request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data; boundary=") == true)
+            let body = try requestBody(request)
+            let text = String(decoding: body, as: UTF8.self)
+            XCTAssertTrue(text.contains("name=\"files\"; filename=\"survey.tif\""))
+            XCTAssertTrue(text.contains("Content-Type: image/tiff"))
+            XCTAssertTrue(text.contains("TIFF-BYTES"))
+            let data = #"{"incident":{"id":"flood-1","name":"Riverside flood","kind":"incident","bounds":{"west":-84.52,"south":39.10,"east":-84.51,"north":39.11},"imagery":{"url":"/api/imagery/a1","bounds":{"west":-84.52,"south":39.10,"east":-84.51,"north":39.11},"source":"Uploaded GeoTIFF","timestamp":"2026-11-07T22:00:00Z"},"version":2,"roadCount":0,"roads":[],"reports":[]}}"#.data(using: .utf8)!
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
+        }
+        let detail = try await IncidentAPIClient(baseURL: "https://aftermap.example", urlSession: session)
+            .uploadGeoTIFFs(
+                incidentId: "flood-1",
+                key: "incident-secret",
+                files: [IncidentSurveyFile(name: "survey.tif", data: Data("TIFF-BYTES".utf8))]
+            )
+
+        XCTAssertEqual(detail.imagery?.source, "Uploaded GeoTIFF")
+        XCTAssertEqual(detail.version, 2)
+    }
+
+    func testRoadImportUsesIncidentAuthorizationContract() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/incidents/flood-1/roads")
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer incident-secret")
+            let data = #"{"incident":{"id":"flood-1","name":"Riverside flood","kind":"incident","bounds":{"west":-84.52,"south":39.10,"east":-84.51,"north":39.11},"imagery":null,"version":2,"roadCount":1,"roads":[{"id":"r1","from":{"latitude":39.10,"longitude":-84.52},"to":{"latitude":39.11,"longitude":-84.51},"state":"unknown","label":"River Road"}],"reports":[]}}"#.data(using: .utf8)!
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
+        }
+        let detail = try await IncidentAPIClient(baseURL: "https://aftermap.example", urlSession: session)
+            .importRoads(incidentId: "flood-1", key: "incident-secret")
+
+        XCTAssertEqual(detail.roadCount, 1)
+        XCTAssertEqual(detail.roads.first?.label, "River Road")
+    }
+
     func testOrdinaryRouteUsesSharedContractAndPreservesUnavailableReason() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
@@ -163,6 +247,38 @@ final class AftermapTests: XCTestCase {
         )
         XCTAssertEqual(route.status, .unavailable)
         XCTAssertEqual(route.reason, "No verified path around the affected area.")
+    }
+
+    @MainActor
+    func testIncidentRouteCrossingSecondIncidentIsWithheld() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        MockURLProtocol.handler = { request in
+            if request.httpMethod == "GET" {
+                let data = #"{"incidents":[{"id":"a","name":"Flood A","kind":"incident","bounds":{"west":-85.0,"south":39.0,"east":-84.9,"north":39.1},"imagery":null,"version":1,"roadCount":2},{"id":"b","name":"Fire B","kind":"incident","bounds":{"west":-84.8,"south":39.0,"east":-84.7,"north":39.1},"imagery":null,"version":1,"roadCount":2}]}"#.data(using: .utf8)!
+                return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
+            }
+            XCTAssertEqual(request.url?.path, "/api/incidents/a/route")
+            let data = #"{"status":"complete","coordinates":[{"latitude":39.05,"longitude":-84.95},{"latitude":39.05,"longitude":-84.75},{"latitude":39.05,"longitude":-84.6}],"distanceMeters":22000,"reason":"Verified around Flood A."}"#.data(using: .utf8)!
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
+        }
+        let suite = "GaslightMaps.CrossIncidentRoute.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = WorldMapStore(defaults: defaults, urlSession: session)
+        store.serverURL = "https://aftermap.example"
+        await store.refreshIncidents()
+        store.origin = IncidentCoordinate(latitude: 39.05, longitude: -84.95)
+        store.destination = IncidentCoordinate(latitude: 39.05, longitude: -84.6)
+
+        await store.previewRoute()
+
+        guard case let .unavailable(reason) = store.routeState else {
+            return XCTFail("Expected the cross-incident route to be withheld")
+        }
+        XCTAssertTrue(reason.contains("Fire B"))
+        XCTAssertTrue(reason.contains("cross-incident verification"))
     }
 
     func testIncidentReportUsesBearerKeyAndExactRoadEvidenceContract() async throws {

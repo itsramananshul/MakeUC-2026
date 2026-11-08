@@ -34,6 +34,27 @@ final class AftermapUITests: XCTestCase {
         XCTAssertTrue(app.buttons["route.origin"].waitForExistence(timeout: 3))
     }
 
+    func testReportDisasterOpensNativeIncidentCreationFlow() {
+        let app = XCUIApplication()
+        app.launchEnvironment["AFTERMAP_AUTOMATIC_LOCATION"] = "0"
+        app.launch()
+
+        let report = app.buttons["disaster.report"]
+        XCTAssertTrue(report.waitForExistence(timeout: 10))
+        report.tap()
+
+        let create = app.buttons["incident.create"].firstMatch
+        XCTAssertTrue(create.waitForExistence(timeout: 5))
+        create.tap()
+
+        XCTAssertTrue(app.textFields["incident.create.name"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["incident.create.locationSearch"].exists)
+        XCTAssertTrue(app.buttons["incident.create.currentLocation"].exists)
+        XCTAssertTrue(app.otherElements["incident.create.map"].exists)
+        XCTAssertTrue(app.buttons["incident.create.submit"].exists)
+        XCTAssertFalse(app.buttons["incident.create.submit"].isEnabled)
+    }
+
     func testSimulatorCanChooseRouteEndpointsOnMap() {
         let app = XCUIApplication()
         app.launchEnvironment["AFTERMAP_AUTOMATIC_LOCATION"] = "0"
@@ -64,6 +85,8 @@ final class AftermapUITests: XCTestCase {
 
         let addReport = app.buttons["incident.fieldReport"]
         XCTAssertTrue(addReport.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["incident.addSurvey"].exists)
+        XCTAssertTrue(app.buttons["incident.importRoads"].exists)
         addReport.tap()
 
         let choosePoint = app.buttons["Choose point on map"]

@@ -1,5 +1,6 @@
 import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct RootView: View {
     @EnvironmentObject private var store: WorldMapStore
@@ -396,16 +397,21 @@ struct RootView: View {
 private struct DisasterHubSheet: View {
     @ObservedObject var store: WorldMapStore
     @Environment(\.dismiss) private var dismiss
+    @State private var showingCreate = false
 
     var body: some View {
         NavigationStack {
             Group {
                 if store.incidents.isEmpty {
-                    ContentUnavailableView(
-                        "No Active Disasters",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text("New disaster-area creation will be connected to the reporting flow.")
-                    )
+                    ContentUnavailableView {
+                        Label("No Active Disasters", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text("Mark an affected area to start collecting field evidence and aerial surveys.")
+                    } actions: {
+                        Button("Report an Incident", systemImage: "plus") { showingCreate = true }
+                            .buttonStyle(.borderedProminent)
+                            .accessibilityIdentifier("incident.create")
+                    }
                 } else {
                     List(store.incidents) { incident in
                         Button {
@@ -441,9 +447,233 @@ private struct DisasterHubSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    Button { showingCreate = true } label: { Image(systemName: "plus") }
+                        .accessibilityLabel("Report a new incident")
+                        .accessibilityIdentifier("incident.create")
+                }
             }
         }
         .presentationDetents([.medium, .large])
+        .sheet(isPresented: $showingCreate) {
+            NewIncidentSheet(store: store) { incident in
+                showingCreate = false
+                Task {
+                    await store.loadIncident(incident)
+                    dismiss()
+                }
+            }
+        }
+    }
+}
+
+private struct NewIncidentSheet: View {
+    @ObservedObject var store: WorldMapStore
+    var onCreated: (Incident) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var locationQuery = ""
+    @State private var results: [PlaceResult] = []
+    @State private var widthKilometers = 1.0
+    @State private var operatorKey = ""
+    @State private var searching = false
+    @State private var submitting = false
+    @State private var error: String?
+    @State private var created: IncidentCreationResponse?
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if let created {
+                    creationConfirmation(created)
+                } else {
+                    creationForm
+                }
+            }
+            .navigationTitle(created == nil ? "Report Incident" : "Incident Created")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button { dismiss() } label: { Image(systemName: "xmark") }
+                        .accessibilityLabel("Cancel")
+                }
+                if created == nil {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button { Task { await submit() } } label: {
+                            if submitting { ProgressView() } else { Image(systemName: "checkmark") }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!canSubmit || submitting)
+                        .accessibilityLabel("Create incident")
+                        .accessibilityIdentifier("incident.create.submit")
+                    }
+                }
+            }
+        }
+        .interactiveDismissDisabled(submitting)
+        .onDisappear {
+            if created == nil { store.incidentDraftCenter = nil }
+        }
+    }
+
+    private var creationForm: some View {
+        Form {
+            Section("Incident") {
+                TextField("e.g. Riverside flood", text: $name)
+                    .textInputAutocapitalization(.words)
+                    .accessibilityIdentifier("incident.create.name")
+            }
+
+            Section("Find the affected area") {
+                HStack {
+                    TextField("Address, city, or landmark", text: $locationQuery)
+                        .submitLabel(.search)
+                        .onSubmit { Task { await search() } }
+                        .accessibilityIdentifier("incident.create.locationSearch")
+                    if searching { ProgressView().controlSize(.small) }
+                    Button { Task { await search() } } label: { Image(systemName: "magnifyingglass") }
+                        .disabled(locationQuery.trimmingCharacters(in: .whitespacesAndNewlines).count < 2 || searching)
+                        .accessibilityLabel("Search location")
+                }
+                ForEach(results.prefix(5)) { place in
+                    Button {
+                        choose(place.coordinate)
+                        locationQuery = place.name
+                        results = []
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(place.name).foregroundStyle(.primary)
+                            Text(place.detail).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                Button { store.requestCurrentLocationForIncident() } label: {
+                    Label("Use My Current Location", systemImage: "location.fill")
+                }
+                .accessibilityIdentifier("incident.create.currentLocation")
+            }
+
+            Section("Pin the center") {
+                MapLibreWorldMap(store: store) { coordinate in
+                    choose(IncidentCoordinate(coordinate))
+                }
+                .frame(height: 230)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .accessibilityLabel("Incident location map")
+                .accessibilityIdentifier("incident.create.map")
+
+                if let center = store.incidentDraftCenter {
+                    Label(
+                        String(format: "Selected %.5f, %.5f", center.latitude, center.longitude),
+                        systemImage: "mappin.circle.fill"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(AftermapTheme.mint)
+                } else {
+                    Text("Search, use your location, or tap the map to place the incident center.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Picker("Affected area", selection: $widthKilometers) {
+                    Text("500 m across").tag(0.5)
+                    Text("1 km across").tag(1.0)
+                    Text("2 km across").tag(2.0)
+                    Text("4 km across").tag(4.0)
+                }
+            }
+
+            Section("Workspace access") {
+                SecureField("Operator key (if required)", text: $operatorKey)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Text("The server may require its workspace operator key before it creates an incident.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let error {
+                Section {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(AftermapTheme.red)
+                        .accessibilityIdentifier("incident.create.error")
+                }
+            }
+        }
+    }
+
+    private func creationConfirmation(_ response: IncidentCreationResponse) -> some View {
+        VStack(spacing: 20) {
+            Image(systemName: "checkmark.shield.fill")
+                .font(.system(size: 52))
+                .foregroundStyle(AftermapTheme.mint)
+            Text(response.incident.name)
+                .font(.title2.weight(.bold))
+            Text("Save this incident access key. It is required to add reports, roads, or aerial surveys.")
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+            Text(response.key)
+                .font(.body.monospaced())
+                .textSelection(.enabled)
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+            Button("Copy Access Key", systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = response.key
+            }
+            .buttonStyle(.bordered)
+            Button("Open Incident", systemImage: "map.fill") {
+                onCreated(response.incident)
+            }
+            .buttonStyle(.borderedProminent)
+            .accessibilityIdentifier("incident.create.open")
+        }
+        .padding()
+    }
+
+    private var canSubmit: Bool {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 && store.incidentDraftCenter != nil
+    }
+
+    private func choose(_ coordinate: IncidentCoordinate) {
+        store.incidentDraftCenter = coordinate
+        store.focus(on: coordinate, zoom: 15)
+        error = nil
+    }
+
+    private func search() async {
+        let term = locationQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard term.count >= 2 else { return }
+        searching = true
+        error = nil
+        defer { searching = false }
+        do {
+            results = try await store.client.places(query: term)
+            if results.isEmpty { error = "No matching places found. Try a nearby city or tap the map." }
+        } catch is CancellationError {
+            return
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func submit() async {
+        guard let center = store.incidentDraftCenter else { return }
+        submitting = true
+        error = nil
+        defer { submitting = false }
+        if let response = await store.createIncident(
+            name: name,
+            center: center,
+            widthKilometers: widthKilometers,
+            operatorKey: operatorKey
+        ) {
+            created = response
+        } else {
+            error = store.notice
+            store.notice = nil
+        }
     }
 }
 
@@ -485,6 +715,9 @@ private struct IncidentSheet: View {
     @ObservedObject var store: WorldMapStore
     @Binding var showingReport: Bool
     @Environment(\.dismiss) private var dismiss
+    @State private var showingSurveyImporter = false
+    @State private var uploadingSurvey = false
+    @State private var importingRoads = false
 
     var body: some View {
         NavigationStack {
@@ -501,6 +734,30 @@ private struct IncidentSheet: View {
                                 Label("No aerial survey published", systemImage: "photo.badge.exclamationmark")
                                     .foregroundStyle(.secondary)
                             }
+                            Button { showingSurveyImporter = true } label: {
+                                if uploadingSurvey {
+                                    Label("Publishing aerial survey…", systemImage: "arrow.up.circle")
+                                } else {
+                                    Label("Add georeferenced aerial survey", systemImage: "square.and.arrow.up")
+                                }
+                            }
+                            .disabled(uploadingSurvey)
+                            .accessibilityIdentifier("incident.addSurvey")
+                            Button {
+                                importingRoads = true
+                                Task {
+                                    _ = await store.importIncidentRoads()
+                                    importingRoads = false
+                                }
+                            } label: {
+                                if importingRoads {
+                                    Label("Importing map roads…", systemImage: "arrow.triangle.2.circlepath")
+                                } else {
+                                    Label(detail.roadCount == 0 ? "Import map roads" : "Refresh map roads", systemImage: "road.lanes")
+                                }
+                            }
+                            .disabled(importingRoads)
+                            .accessibilityIdentifier("incident.importRoads")
                             Button {
                                 store.selectedRoad = nil
                                 store.clearReportLocation()
@@ -554,6 +811,26 @@ private struct IncidentSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .fileImporter(
+            isPresented: $showingSurveyImporter,
+            allowedContentTypes: [.tiff],
+            allowsMultipleSelection: true
+        ) { result in
+            guard case let .success(urls) = result else {
+                if case let .failure(error) = result { store.notice = error.localizedDescription }
+                return
+            }
+            uploadingSurvey = true
+            Task {
+                do {
+                    let files = try await IncidentSurveyFileLoader.load(urls)
+                    _ = await store.uploadGeoTIFFs(files)
+                } catch {
+                    store.notice = error.localizedDescription
+                }
+                uploadingSurvey = false
+            }
+        }
     }
 
     private func roadColor(_ state: IncidentRoad.State) -> Color {
@@ -564,6 +841,33 @@ private struct IncidentSheet: View {
         case .hazard: .orange
         case .conflict: .purple
         }
+    }
+}
+
+private enum IncidentSurveyFileLoader {
+    static func load(_ urls: [URL]) async throws -> [IncidentSurveyFile] {
+        try await Task.detached(priority: .userInitiated) {
+            guard !urls.isEmpty, urls.count <= 8 else {
+                throw AftermapAPIError.backend("Choose one to eight georeferenced TIFF files.")
+            }
+            var total = 0
+            var files: [IncidentSurveyFile] = []
+            for url in urls {
+                let ext = url.pathExtension.lowercased()
+                guard ext == "tif" || ext == "tiff" else {
+                    throw AftermapAPIError.backend("Choose georeferenced .tif or .tiff files.")
+                }
+                let accessing = url.startAccessingSecurityScopedResource()
+                defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+                let data = try Data(contentsOf: url, options: .mappedIfSafe)
+                total += data.count
+                guard total <= 72 * 1024 * 1024 else {
+                    throw AftermapAPIError.backend("Choose up to 72 MB of imagery.")
+                }
+                files.append(IncidentSurveyFile(name: url.lastPathComponent, data: data))
+            }
+            return files
+        }.value
     }
 }
 

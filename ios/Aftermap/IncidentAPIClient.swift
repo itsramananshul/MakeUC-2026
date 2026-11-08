@@ -13,6 +13,15 @@ struct IncidentAPIClient {
         try await send(path: "api/incidents/\(escaped(id))", method: "GET", body: Optional<String>.none)
     }
 
+    func createIncident(name: String, bounds: IncidentBounds, operatorKey: String) async throws -> IncidentCreationResponse {
+        try await send(
+            path: "api/incidents",
+            method: "POST",
+            body: IncidentCreationRequest(name: name, bounds: bounds),
+            bearer: operatorKey
+        )
+    }
+
     func places(query: String) async throws -> [PlaceResult] {
         guard var components = URLComponents(url: try endpoint("api/places"), resolvingAgainstBaseURL: false) else {
             throw AftermapAPIError.invalidServerURL
@@ -42,6 +51,57 @@ struct IncidentAPIClient {
             body: request,
             bearer: key
         )
+    }
+
+    func uploadGeoTIFFs(incidentId: String, key: String, files: [IncidentSurveyFile]) async throws -> IncidentDetail {
+        let boundary = "Aftermap-\(UUID().uuidString)"
+        var body = Data()
+        for file in files {
+            let safeName = file.name
+                .replacingOccurrences(of: "\"", with: "_")
+                .replacingOccurrences(of: "\r", with: "_")
+                .replacingOccurrences(of: "\n", with: "_")
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"files\"; filename=\"\(safeName)\"\r\n".data(using: .utf8)!)
+            body.append("Content-Type: image/tiff\r\n\r\n".data(using: .utf8)!)
+            body.append(file.data)
+            body.append("\r\n".data(using: .utf8)!)
+        }
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+
+        var request = URLRequest(url: try endpoint("api/incidents/\(escaped(incidentId))/imagery"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 120
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue(String(body.count), forHTTPHeaderField: "Content-Length")
+        if !key.isEmpty { request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
+        request.httpBody = body
+
+        do {
+            let (data, response) = try await urlSession.data(for: request)
+            guard let http = response as? HTTPURLResponse else { throw AftermapAPIError.invalidResponse }
+            guard (200..<300).contains(http.statusCode) else {
+                if let envelope = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data) {
+                    throw AftermapAPIError.backend(envelope.error)
+                }
+                throw AftermapAPIError.backend("Server error \(http.statusCode).")
+            }
+            return try JSONDecoder().decode(IncidentDetailResponse.self, from: data).incident
+        } catch is CancellationError { throw CancellationError() }
+        catch let error as URLError where error.code == .cancelled { throw CancellationError() }
+        catch let error as AftermapAPIError { throw error }
+        catch { throw AftermapAPIError.transport(error.localizedDescription) }
+    }
+
+    func importRoads(incidentId: String, key: String) async throws -> IncidentDetail {
+        let response: IncidentDetailResponse = try await send(
+            path: "api/incidents/\(escaped(incidentId))/roads",
+            method: "POST",
+            body: Optional<String>.none,
+            bearer: key
+        )
+        return response.incident
     }
 
     func resolvedURL(_ value: String) -> URL? {

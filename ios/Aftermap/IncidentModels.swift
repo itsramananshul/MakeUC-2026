@@ -48,6 +48,22 @@ struct IncidentBounds: Codable, Equatable {
         return false
     }
 
+    static func square(center: IncidentCoordinate, widthKilometers: Double) -> IncidentBounds? {
+        guard widthKilometers > 0, widthKilometers <= 10 else { return nil }
+        let latitudeDelta = widthKilometers / 2 / 111.32
+        let cosine = cos(center.latitude * .pi / 180)
+        guard abs(cosine) > 0.000_001 else { return nil }
+        let longitudeDelta = latitudeDelta / cosine
+        guard abs(center.latitude) + latitudeDelta <= 85,
+              abs(center.longitude) + abs(longitudeDelta) <= 180 else { return nil }
+        return IncidentBounds(
+            west: center.longitude - longitudeDelta,
+            south: center.latitude - latitudeDelta,
+            east: center.longitude + longitudeDelta,
+            north: center.latitude + latitudeDelta
+        )
+    }
+
     private var latitudeRange: ClosedRange<Double> { min(south, north)...max(south, north) }
     private var longitudeRange: ClosedRange<Double> { min(west, east)...max(west, east) }
 }
@@ -71,6 +87,25 @@ struct Incident: Codable, Identifiable, Equatable {
 }
 
 struct IncidentListResponse: Codable { var incidents: [Incident] }
+
+struct IncidentCreationRequest: Encodable {
+    var name: String
+    var bounds: IncidentBounds
+}
+
+struct IncidentCreationResponse: Decodable, Equatable {
+    var incident: Incident
+    var key: String
+}
+
+struct IncidentDetailResponse: Decodable, Equatable {
+    var incident: IncidentDetail
+}
+
+struct IncidentSurveyFile: Equatable {
+    var name: String
+    var data: Data
+}
 
 struct IncidentRouteRequest: Codable {
     var origin: IncidentCoordinate
