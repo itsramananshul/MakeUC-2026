@@ -226,7 +226,11 @@ struct MapLibreWorldMap: UIViewRepresentable {
                 let layer = MLNRasterStyleLayer(identifier: "aftermap-image-layer-\(index)", source: source)
                 layer.rasterOpacity = NSExpression(forConstantValue: 0.72)
                 layer.maximumZoomLevel = 22
-                style.addLayer(layer)
+                if let firstLabel = style.layers.first(where: { $0 is MLNSymbolStyleLayer }) {
+                    style.insertLayer(layer, below: firstLabel)
+                } else {
+                    style.addLayer(layer)
+                }
             }
         }
 
