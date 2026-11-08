@@ -9,6 +9,31 @@ import { coveragePolygon } from "./route-boundaries";
 
 const closed = (road: Road) => road.state === "blocked" || road.state === "hazard" || road.state === "conflict";
 
+function closureSegments(roads: Road[]) {
+  return roads.filter(closed).flatMap(roadLegs).map(road => {
+    const trim = Math.min(.25, .01 / distanceMeters(road.from, road.to));
+    const at = (fraction: number): [number, number] => [
+      road.from.longitude + (road.to.longitude - road.from.longitude) * fraction,
+      road.from.latitude + (road.to.latitude - road.from.latitude) * fraction,
+    ];
+    // A route may meet the road at its end to turn onto a different street.
+    return { road, interior: lineString([at(trim), at(1 - trim)]) };
+  });
+}
+
+function hitsClosure(from: Coordinate, to: Coordinate, closures: ReturnType<typeof closureSegments>,
+  segment = lineString([lngLat(from), lngLat(to)])) {
+  return closures.some(({ road, interior }) => booleanIntersects(segment, interior) || followsClosedRoad(from, to, road));
+}
+
+function avoidClosures(incident: Incident): Incident {
+  const closures = closureSegments(incident.roads);
+  if (!closures.length) return incident;
+  const roads = incident.roads.filter(road => closed(road) ||
+    roadLegs(road).every(leg => !hitsClosure(leg.from, leg.to, closures)));
+  return { ...incident, roads };
+}
+
 function followsClosedRoad(from: Coordinate, to: Coordinate, road: Road) {
   const scale = Math.cos(road.from.latitude * Math.PI / 180);
   const dx = (road.to.longitude - road.from.longitude) * scale;
@@ -37,7 +62,7 @@ export async function walkingDirections(origin: Coordinate, destination: Coordin
     return detail;
   };
   const local = common ? incidentDetails(common.id) : null;
-  const reported = local ? incidentRoute(local, origin, destination, incidents) : null;
+  const reported = local ? incidentRoute(avoidClosures(local), origin, destination, incidents) : null;
   function assess(option: RouteOption): RouteOption | null {
     const line = lineString(option.coordinates.map(lngLat));
     const affected = incidents.flatMap(incident => {
@@ -46,31 +71,29 @@ export async function walkingDirections(origin: Coordinate, destination: Coordin
     });
     if (!affected.length) return option;
     const areas = affected.flatMap(incident => incident.areas);
-    const closures = affected.flatMap(({ detail }) => detail.roads.filter(closed).flatMap(roadLegs));
+    const closures = affected.flatMap(({ detail }) => closureSegments(detail.roads));
     const hazards = affected.flatMap(({ detail }) => detail.reports.flatMap(report =>
       !report.edgeId && report.location && (report.condition === "blocked" || report.condition === "hazard") ? [report.location] : []));
     const unverifiedSegments: number[] = [];
     for (let index = 1; index < option.coordinates.length; index++) {
       const from = option.coordinates[index - 1], to = option.coordinates[index];
-      if (closures.some(road => followsClosedRoad(from, to, road)) ||
+      const segment = lineString([lngLat(from), lngLat(to)]);
+      if (hitsClosure(from, to, closures, segment) ||
           hazards.some(point => distanceMeters(point, nearestPoint(point, from, to)) < 8)) return null;
-      if (areas.some(area => booleanIntersects(lineString([lngLat(from), lngLat(to)]), area))) unverifiedSegments.push(index - 1);
+      if (areas.some(area => booleanIntersects(segment, area))) unverifiedSegments.push(index - 1);
     }
     return { ...option, unverifiedSegments };
   }
 
-  const usable = (route: ReturnType<typeof incidentRoute>) => route.status === "complete" &&
+  const passesAssessment = (route: ReturnType<typeof incidentRoute>) => route.coordinates.length > 1 &&
     assess({ ...route, steps: [], durationSeconds: 0 });
-  if (reported && usable(reported)) return reported;
+  if (reported?.status === "complete" && passesAssessment(reported)) return reported;
   const fieldPassage = local?.roads.some(road => road.state === "open" && road.id.startsWith("field-"));
   const hasReportedSegment = (route: ReturnType<typeof incidentRoute>) =>
     (route.unverifiedSegments?.length ?? 0) < route.coordinates.length - 1;
   function tryMapped(incident: Incident) {
-    const closures = incident.roads.filter(closed).flatMap(roadLegs);
-    const roads = incident.roads.filter(road => road.state !== "unknown" ||
-      !closures.some(closure => followsClosedRoad(road.from, road.to, closure)));
-    const route = mappedIncidentRoute({ ...incident, roads }, origin, destination, incidents);
-    return usable(route) ? route : null;
+    const route = mappedIncidentRoute(avoidClosures(incident), origin, destination, incidents);
+    return route.status === "complete" && passesAssessment(route) ? route : null;
   }
   const stored = local?.roads.length ? tryMapped(local) : null;
   if (stored && (!fieldPassage || hasReportedSegment(stored))) return stored;
@@ -96,5 +119,5 @@ export async function walkingDirections(origin: Coordinate, destination: Coordin
   if (route.status === "complete" || !local) return route;
   const alternate = stored ?? connected ?? (fieldPassage ? null : await nearbyRoute(local));
   if (alternate) return alternate;
-  return reported?.status === "partial" ? reported : route;
+  return reported?.status === "partial" && passesAssessment(reported) ? reported : route;
 }
