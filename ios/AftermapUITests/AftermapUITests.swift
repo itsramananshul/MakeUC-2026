@@ -57,5 +57,11 @@ final class AftermapUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Map point selected inside incident"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["report.submit"].isEnabled)
         XCTAssertFalse(app.textFields.matching(NSPredicate(format: "placeholderValue CONTAINS[c] 'latitude' OR placeholderValue CONTAINS[c] 'longitude'")).firstMatch.exists)
+
+        app.buttons["report.submit"].tap()
+        let confirmation = app.alerts["AFTERMAP"]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        XCTAssertTrue(confirmation.staticTexts["Field report added to Preview Incident."].exists)
+        confirmation.buttons["OK"].tap()
     }
 }

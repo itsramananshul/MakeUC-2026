@@ -349,6 +349,31 @@ final class WorldMapStore: ObservableObject {
             photoBase64: photoJPEG?.base64EncodedString(),
             confirmed: true
         )
+#if DEBUG
+        if isIncidentPreviewMode, var detail = incidentDetail {
+            let timestamp = ISO8601DateFormatter().string(from: Date())
+            if let road, let condition, let index = detail.roads.firstIndex(where: { $0.id == road.id }) {
+                detail.roads[index].state = condition
+            }
+            detail.reports.insert(IncidentReport(
+                id: request.id,
+                edgeId: road?.id,
+                displayName: displayName,
+                condition: condition,
+                note: request.note,
+                at: timestamp,
+                evidenceType: request.evidenceType,
+                location: location,
+                evidenceUrl: photoJPEG == nil ? nil : "preview://evidence/\(request.id)"
+            ), at: 0)
+            detail.version += 1
+            incidentDetail = detail
+            if let road { selectedRoad = detail.roads.first(where: { $0.id == road.id }) }
+            reportLocation = nil
+            notice = road.map { "Evidence added to \($0.label)." } ?? "Field report added to \(incident.name)."
+            return true
+        }
+#endif
         do {
             try await client.submitReport(incidentId: incident.id, key: reportKey, request: request)
             incidentDetail = try await client.incident(id: incident.id)
