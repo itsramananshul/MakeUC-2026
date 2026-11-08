@@ -105,7 +105,8 @@ export default function WorldMap(props: Props) {
       container: host.current, style,
       center: initial && "point" in initial ? lngLat(initial.point) : [0, 24],
       zoom: initial && "point" in initial ? initial.zoom ?? 14 : 1.65, maxZoom: 21,
-      minZoom: 1, attributionControl: { compact: true }, pitchWithRotate: false,
+      minZoom: 1, maxBounds: [[-180, -85], [180, 85]], renderWorldCopies: false,
+      attributionControl: { compact: true }, pitchWithRotate: false,
     }); } catch {
       setMessage("The world map requires WebGL. Enable it in your browser and refresh."); return;
     }

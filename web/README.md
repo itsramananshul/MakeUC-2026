@@ -41,7 +41,9 @@ Set `NODEODM_URL=http://127.0.0.1:3111`. Provide overlapping images of the same 
 
 ## Deployment and shared API
 
-Vercel serves the frontend from `web/` on GitHub `main`. Set `AFTERMAP_API_ORIGIN` to the HTTPS origin of the shared Node backend. The Node host runs SQLite and connects to the drone worker. The current Vercel site depends on that host and its tunnel remaining online.
+Vercel serves the frontend from `web/` on GitHub `main`. The production `AFTERMAP_API_ORIGIN` is `https://gaslight-api-madman.anshullabs.tech`. Madman Coolify deploys the repository's root `compose.yml` with the Node API and a private NodeODM worker. SQLite and the drone worker use separate persistent volumes. The existing Madman Cloudflare tunnel serves HTTPS for the public API.
+
+For a fresh Compose deployment, set `AFTERMAP_OPERATOR_KEY` in the host's runtime environment. To migrate an existing database, provide an authenticated HTTPS snapshot URL, its bearer token, and its SHA-256 checksum using the `AFTERMAP_DB_RESTORE_*` variables in `compose.yml`. The container imports a snapshot only when the persistent database is absent. Clear the restore variables after verifying the import.
 
 - `GET /api/incidents` lists incidents. `POST /api/incidents` creates an incident and returns its access key.
 - `GET /api/incidents/{id}` returns the current incident snapshot, roads, reports, and imagery.
