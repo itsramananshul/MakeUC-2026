@@ -205,7 +205,11 @@ struct MapLibreWorldMap: UIViewRepresentable {
                 return "\(imagery.timestamp):\(imagery.url):\(detailTiles)"
             }.joined(separator: ";")
             let surveyVisibility = store.showsIncidentSurveyImagery ? "surveys-on" : "surveys-off"
-            return [store.mapStyle.rawValue, surveyVisibility, imagery].joined(separator: "#")
+            let boundaries = store.incidents.map { incident in
+                let bounds = incident.mapBoundaryBounds
+                return "\(incident.id):\(incident.version):\(bounds.west),\(bounds.south),\(bounds.east),\(bounds.north)"
+            }.joined(separator: ";")
+            return [store.mapStyle.rawValue, surveyVisibility, boundaries, imagery].joined(separator: "#")
         }
 
         private var dynamicStyleSignature: String {
@@ -379,12 +383,13 @@ struct MapLibreWorldMap: UIViewRepresentable {
 
         private func addIncidents(to style: MLNStyle) {
             let polygons: [MLNPolygon] = store.incidents.map { incident in
+                let bounds = incident.mapBoundaryBounds
                 var coordinates = [
-                    CLLocationCoordinate2D(latitude: incident.bounds.north, longitude: incident.bounds.west),
-                    CLLocationCoordinate2D(latitude: incident.bounds.north, longitude: incident.bounds.east),
-                    CLLocationCoordinate2D(latitude: incident.bounds.south, longitude: incident.bounds.east),
-                    CLLocationCoordinate2D(latitude: incident.bounds.south, longitude: incident.bounds.west),
-                    CLLocationCoordinate2D(latitude: incident.bounds.north, longitude: incident.bounds.west)
+                    CLLocationCoordinate2D(latitude: bounds.north, longitude: bounds.west),
+                    CLLocationCoordinate2D(latitude: bounds.north, longitude: bounds.east),
+                    CLLocationCoordinate2D(latitude: bounds.south, longitude: bounds.east),
+                    CLLocationCoordinate2D(latitude: bounds.south, longitude: bounds.west),
+                    CLLocationCoordinate2D(latitude: bounds.north, longitude: bounds.west)
                 ]
                 return MLNPolygon(coordinates: &coordinates, count: UInt(coordinates.count))
             }

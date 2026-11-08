@@ -518,7 +518,7 @@ final class WorldMapStore: ObservableObject {
             destinationPlace = nil
             shouldCalculateRoute = true
         case .reportLocation:
-            guard let incident = selectedIncident, incident.bounds.contains(coordinate) else {
+            guard let incident = selectedIncident, incident.coverageContains(coordinate) else {
                 notice = "Choose a point inside the selected incident."
                 return
             }
@@ -527,7 +527,7 @@ final class WorldMapStore: ObservableObject {
             reportLocationRevision += 1
             focus(on: value, zoom: 16)
         case nil:
-            if let incident = incidents.first(where: { $0.bounds.contains(coordinate) }) {
+            if let incident = incidents.first(where: { $0.coverageContains(coordinate) }) {
                 Task { await loadIncident(incident) }
             }
         }
@@ -593,7 +593,7 @@ final class WorldMapStore: ObservableObject {
             focus(on: value, zoom: 15)
             calculateRouteWhenReady()
         case .report:
-            guard let incident = selectedIncident, incident.bounds.contains(coordinate) else {
+            guard let incident = selectedIncident, incident.coverageContains(coordinate) else {
                 pendingLocationUse = nil
                 notice = "Your current location is outside the selected incident. Choose a point on the map instead."
                 return
@@ -630,7 +630,7 @@ final class WorldMapStore: ObservableObject {
         selectedIncident = incident
         selectedRoad = nil
         reportLocation = nil
-        focus(on: IncidentCoordinate(incident.bounds.center), zoom: 13)
+        focus(on: IncidentCoordinate(incident.mapBoundaryBounds.center), zoom: 13)
         do {
             incidentDetail = try await client.incident(id: incident.id)
         } catch {
@@ -655,7 +655,7 @@ final class WorldMapStore: ObservableObject {
         routeState = .calculating
         routeAlternatives = []
         let endpointIncident = incidents.first(where: {
-            $0.bounds.contains(origin.coordinate) || $0.bounds.contains(destination.coordinate)
+            $0.coverageContains(origin.coordinate) || $0.coverageContains(destination.coordinate)
         })
 
         do {
@@ -673,7 +673,7 @@ final class WorldMapStore: ObservableObject {
                 if response.status == .unavailable {
                     routeState = .unavailable(response.reason)
                 } else if let other = incidents.first(where: {
-                    $0.id != incident.id && $0.bounds.intersects(response.coordinates)
+                    $0.id != incident.id && $0.coverageIntersects(response.coordinates)
                 }) {
                     routeState = .unavailable(
                         "The verified route for \(incident.name) also enters \(other.name), so Gaslight Maps withheld it pending cross-incident verification."
@@ -692,7 +692,7 @@ final class WorldMapStore: ObservableObject {
                     mode: travelMode
                 )
                 let safeRoutes = candidates.filter { route in
-                    !incidents.contains(where: { $0.bounds.intersects(route.coordinates) })
+                    !incidents.contains(where: { $0.coverageIntersects(route.coordinates) })
                 }
                 guard let first = safeRoutes.first else {
                     routeState = .unavailable(
@@ -712,7 +712,7 @@ final class WorldMapStore: ObservableObject {
                 destination: destination,
                 mode: travelMode
             )
-            if let affected = incidents.first(where: { $0.bounds.intersects(ordinary.coordinates) }) {
+            if let affected = incidents.first(where: { $0.coverageIntersects(ordinary.coordinates) }) {
                 routeState = .unavailable(
                     "The proposed route enters \(affected.name), so Gaslight Maps withheld it pending incident-road verification."
                 )
@@ -729,7 +729,7 @@ final class WorldMapStore: ObservableObject {
 
     func selectRouteAlternative(_ route: IncidentRouteResponse) {
         guard routeAlternatives.contains(route),
-              !incidents.contains(where: { $0.bounds.intersects(route.coordinates) }) else {
+              !incidents.contains(where: { $0.coverageIntersects(route.coordinates) }) else {
             routeState = .unavailable("That route can no longer be verified against the current incident map.")
             return
         }
@@ -1008,7 +1008,7 @@ final class WorldMapStore: ObservableObject {
               let location = lastUserLocation,
               !navigationRemainingCoordinates.isEmpty else { return }
         let changedConflict = incidents.first { incident in
-            guard incident.bounds.intersects(navigationRemainingCoordinates) else { return false }
+            guard incident.coverageIntersects(navigationRemainingCoordinates) else { return false }
             if incident.id != navigationAllowedIncidentID { return true }
             return navigationIncidentVersions[incident.id] != incident.version
         }

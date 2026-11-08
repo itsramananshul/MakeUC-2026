@@ -48,6 +48,15 @@ struct IncidentBounds: Codable, Equatable {
         return false
     }
 
+    func union(_ other: IncidentBounds) -> IncidentBounds {
+        IncidentBounds(
+            west: min(west, other.west),
+            south: min(south, other.south),
+            east: max(east, other.east),
+            north: max(north, other.north)
+        )
+    }
+
     static func square(center: IncidentCoordinate, widthKilometers: Double) -> IncidentBounds? {
         guard widthKilometers > 0, widthKilometers <= 10 else { return nil }
         let latitudeDelta = widthKilometers / 2 / 111.32
@@ -95,6 +104,30 @@ struct Incident: Codable, Identifiable, Equatable {
     var publishedSurveys: [IncidentImagery] {
         if let surveys { return surveys }
         return imagery.map { [$0] } ?? []
+    }
+
+    /// Matches the web app's incidentCoverage contract. A route or report is
+    /// affected when it enters either the original incident or any published
+    /// aerial survey footprint.
+    var coverageBounds: [IncidentBounds] {
+        [bounds] + publishedSurveys.map(\.bounds)
+    }
+
+    /// The visible boundary follows the published map rather than leaving the
+    /// original, smaller incident box in the middle of newer imagery.
+    var mapBoundaryBounds: IncidentBounds {
+        let surveyBounds = publishedSurveys.map(\.bounds)
+        return (surveyBounds.isEmpty ? [bounds] : surveyBounds)
+            .dropFirst()
+            .reduce(surveyBounds.first ?? bounds) { $0.union($1) }
+    }
+
+    func coverageContains(_ coordinate: CLLocationCoordinate2D) -> Bool {
+        coverageBounds.contains { $0.contains(coordinate) }
+    }
+
+    func coverageIntersects(_ coordinates: [IncidentCoordinate]) -> Bool {
+        coverageBounds.contains { $0.intersects(coordinates) }
     }
 }
 
@@ -253,6 +286,14 @@ struct IncidentDetail: Codable, Identifiable, Equatable {
     var publishedSurveys: [IncidentImagery] {
         if let surveys { return surveys }
         return imagery.map { [$0] } ?? []
+    }
+
+    var coverageBounds: [IncidentBounds] {
+        [bounds] + publishedSurveys.map(\.bounds)
+    }
+
+    func coverageContains(_ coordinate: CLLocationCoordinate2D) -> Bool {
+        coverageBounds.contains { $0.contains(coordinate) }
     }
 }
 

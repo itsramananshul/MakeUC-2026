@@ -251,6 +251,29 @@ final class AftermapTests: XCTestCase {
         ]))
     }
 
+    func testSurveyCoverageExpandsBoundaryAndRouteAssessment() {
+        let original = IncidentBounds(west: -84.5185, south: 39.0967, east: -84.5069, north: 39.1058)
+        let survey = IncidentBounds(west: -84.5315, south: 39.0909, east: -84.4994, north: 39.1158)
+        let incident = Incident(
+            id: "cincinnati",
+            name: "Cincinnati flood",
+            kind: .incident,
+            bounds: original,
+            imagery: nil,
+            surveys: [IncidentImagery(url: "/survey.webp", bounds: survey, source: "Survey", timestamp: "2026-11-08")],
+            version: 2,
+            roadCount: 0
+        )
+
+        XCTAssertEqual(incident.mapBoundaryBounds, survey)
+        XCTAssertTrue(incident.coverageContains(CLLocationCoordinate2D(latitude: 39.11, longitude: -84.525)))
+        XCTAssertTrue(incident.coverageIntersects([
+            IncidentCoordinate(latitude: 39.11, longitude: -84.54),
+            IncidentCoordinate(latitude: 39.11, longitude: -84.52),
+        ]))
+        XCTAssertFalse(original.contains(CLLocationCoordinate2D(latitude: 39.11, longitude: -84.525)))
+    }
+
     func testIncidentBoundsCreatesBackendCompatibleSquare() throws {
         let center = IncidentCoordinate(latitude: 39.1031, longitude: -84.5120)
         let bounds = try XCTUnwrap(IncidentBounds.square(center: center, widthKilometers: 2))
@@ -459,6 +482,41 @@ final class AftermapTests: XCTestCase {
         }
         XCTAssertTrue(reason.contains("Fire B"))
         XCTAssertTrue(reason.contains("cross-incident verification"))
+    }
+
+    @MainActor
+    func testPointInsideSurveyCoverageUsesIncidentAwareRouting() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        var routeRequestPath: String?
+        MockURLProtocol.handler = { request in
+            if request.httpMethod == "GET" {
+                let data = #"{"incidents":[{"id":"a","name":"Cincinnati flood","kind":"incident","bounds":{"west":-84.5185,"south":39.0967,"east":-84.5069,"north":39.1058},"imagery":{"url":"/survey.webp","bounds":{"west":-84.5315,"south":39.0909,"east":-84.4994,"north":39.1158},"source":"Survey","timestamp":"2026-11-08"},"surveys":[{"url":"/survey.webp","bounds":{"west":-84.5315,"south":39.0909,"east":-84.4994,"north":39.1158},"source":"Survey","timestamp":"2026-11-08"}],"version":2,"roadCount":3556}]}"#.data(using: .utf8)!
+                return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
+            }
+            routeRequestPath = request.url?.path
+            let data = #"{"status":"complete","coordinates":[{"latitude":39.11,"longitude":-84.525},{"latitude":39.104,"longitude":-84.51}],"distanceMeters":1500,"reason":"Survey-aware route."}"#.data(using: .utf8)!
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
+        }
+        let suite = "AFTERMAP.SurveyRoute.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = WorldMapStore(defaults: defaults, urlSession: session)
+        store.serverURL = "https://aftermap.example"
+        await store.refreshIncidents()
+        store.origin = IncidentCoordinate(latitude: 39.11, longitude: -84.525)
+        store.destination = IncidentCoordinate(latitude: 39.104, longitude: -84.51)
+        store.travelMode = .walking
+
+        await store.previewRoute()
+
+        XCTAssertEqual(routeRequestPath, "/api/incidents/a/route")
+        guard case let .route(route, affectedIncidentName) = store.routeState else {
+            return XCTFail("Expected the survey-aware incident route")
+        }
+        XCTAssertEqual(route.reason, "Survey-aware route.")
+        XCTAssertEqual(affectedIncidentName, "Cincinnati flood")
     }
 
     func testIncidentReportUsesBearerKeyAndExactRoadEvidenceContract() async throws {
