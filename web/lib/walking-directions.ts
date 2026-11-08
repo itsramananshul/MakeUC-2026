@@ -7,6 +7,8 @@ import { distanceMeters, incidentCoverage, lngLat, withinIncident, type Coordina
 import { loadRoads, standardRoute } from "./osm";
 import { coveragePolygon } from "./route-boundaries";
 
+const closed = (road: Road) => road.state === "blocked" || road.state === "hazard" || road.state === "conflict";
+
 function followsClosedRoad(from: Coordinate, to: Coordinate, road: Road) {
   const scale = Math.cos(road.from.latitude * Math.PI / 180);
   const dx = (road.to.longitude - road.from.longitude) * scale;
@@ -44,8 +46,7 @@ export async function walkingDirections(origin: Coordinate, destination: Coordin
     });
     if (!affected.length) return option;
     const areas = affected.flatMap(incident => incident.areas);
-    const closures = affected.flatMap(({ detail }) =>
-      detail.roads.filter(road => road.state === "blocked" || road.state === "hazard" || road.state === "conflict"));
+    const closures = affected.flatMap(({ detail }) => detail.roads.filter(closed));
     const hazards = affected.flatMap(({ detail }) => detail.reports.flatMap(report =>
       !report.edgeId && report.location && (report.condition === "blocked" || report.condition === "hazard") ? [report.location] : []));
     const unverifiedSegments: number[] = [];
@@ -58,25 +59,42 @@ export async function walkingDirections(origin: Coordinate, destination: Coordin
     return { ...option, unverifiedSegments };
   }
 
-  if (reported?.status === "complete" && assess({ ...reported, steps: [], durationSeconds: 0 })) return reported;
-  if (local?.roads.length) {
-    const mapped = mappedIncidentRoute(local, origin, destination, incidents);
-    if (mapped.status === "complete" && assess({ ...mapped, steps: [], durationSeconds: 0 })) return mapped;
+  const usable = (route: ReturnType<typeof incidentRoute>) => route.status === "complete" &&
+    assess({ ...route, steps: [], durationSeconds: 0 });
+  if (reported && usable(reported)) return reported;
+  const fieldPassage = local?.roads.some(road => road.state === "open" && road.id.startsWith("field-"));
+  const hasReportedSegment = (route: ReturnType<typeof incidentRoute>) =>
+    (route.unverifiedSegments?.length ?? 0) < route.coordinates.length - 1;
+  function tryMapped(incident: Incident) {
+    const closures = incident.roads.filter(closed);
+    const roads = incident.roads.filter(road => road.state !== "unknown" ||
+      !closures.some(closure => followsClosedRoad(road.from, road.to, closure)));
+    const route = mappedIncidentRoute({ ...incident, roads }, origin, destination, incidents);
+    return usable(route) ? route : null;
   }
+  const stored = local?.roads.length ? tryMapped(local) : null;
+  if (stored && (!fieldPassage || hasReportedSegment(stored))) return stored;
+
+  async function nearbyRoute(incident: Incident) {
+    if (distanceMeters(origin, destination) > 4000) return null;
+    try {
+      const padding = .0018;
+      const roads = await loadRoads({
+        west: Math.max(-180, Math.min(origin.longitude, destination.longitude) - padding),
+        south: Math.max(-85, Math.min(origin.latitude, destination.latitude) - padding),
+        east: Math.min(180, Math.max(origin.longitude, destination.longitude) + padding),
+        north: Math.min(85, Math.max(origin.latitude, destination.latitude) + padding),
+      });
+      const existing = new Set(incident.roads.map(road => road.id));
+      return tryMapped({ ...incident, roads: [...incident.roads, ...roads.filter(road => !existing.has(road.id))] });
+    } catch { return null; }
+  }
+
+  const connected = local && fieldPassage ? await nearbyRoute(local) : null;
+  if (connected && hasReportedSegment(connected)) return connected;
   const route = await standardRoute(origin, destination, incidents, "walking", assess);
-  if (route.status === "complete" || !local || distanceMeters(origin, destination) > 4000) return route;
-  try {
-    const padding = .0018;
-    const roads = await loadRoads({
-      west: Math.max(-180, Math.min(origin.longitude, destination.longitude) - padding),
-      south: Math.max(-85, Math.min(origin.latitude, destination.latitude) - padding),
-      east: Math.min(180, Math.max(origin.longitude, destination.longitude) + padding),
-      north: Math.min(85, Math.max(origin.latitude, destination.latitude) + padding),
-    });
-    const existing = new Set(local.roads.map(road => road.id));
-    const mapped = mappedIncidentRoute({ ...local, roads: [...local.roads, ...roads.filter(road => !existing.has(road.id))] },
-      origin, destination, incidents);
-    if (mapped.status === "complete" && assess({ ...mapped, steps: [], durationSeconds: 0 })) return mapped;
-  } catch { /* Standard directions and reported passages remain available when road import fails. */ }
+  if (route.status === "complete" || !local) return route;
+  const alternate = stored ?? connected ?? (fieldPassage ? null : await nearbyRoute(local));
+  if (alternate) return alternate;
   return reported?.status === "partial" ? reported : route;
 }

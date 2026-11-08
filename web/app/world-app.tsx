@@ -295,7 +295,8 @@ export default function WorldApp() {
     if (!active) return;
     setImporting(true); setError("");
     try {
-      const { incident } = await postJson<{ incident: Incident }>(incidentPath(active.id, "roads"), {}, access);
+      const center = camera.zoom >= 14 && withinIncident(camera.center, active) ? camera.center : undefined;
+      const { incident } = await postJson<{ incident: Incident }>(incidentPath(active.id, "roads"), { center }, access);
       applyIncident(incident);
       setMessage(`Imported OpenStreetMap passages. ${incident.roadCount.toLocaleString()} segments in this incident.`);
     } catch (error) { setError(getMessage(error)); }

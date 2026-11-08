@@ -1,10 +1,10 @@
 import { after } from "next/server";
 import { droneStatus, startDroneJob } from "@/lib/drone";
-import { geographicBounds } from "@/lib/geography";
+import { geographicBounds, midpoint } from "@/lib/geography";
 import { imageryLimit, mosaic } from "@/lib/imagery";
-import { incidentExtent } from "@/lib/incident-types";
+import { incidentExtent, withinIncident } from "@/lib/incident-types";
 import { authorizeIncident, failJob, getEvidence, getIncident, incidentJob, incidentList, pendingJob, recordJob, removeIncidentImagery, requireActiveIncident, resolveIncident, saveIncidentImage, setIncidentRoads, submitIncidentReport } from "@/lib/incident-store";
-import { bearer, failure, json, reportInput, resolveInput, routeInput } from "@/lib/incident-validation";
+import { bearer, failure, json, reportInput, resolveInput, roadImportInput, routeInput } from "@/lib/incident-validation";
 import { loadRoads } from "@/lib/osm";
 import { RequestError } from "@/lib/store";
 import { readInput } from "@/lib/validation";
@@ -84,7 +84,21 @@ export async function POST(request: Request, context: Context) {
     }
     if (operation === "roads") {
       const incident = requireActiveIncident(getIncident(id));
-      return json({ incident: setIncidentRoads(id, await loadRoads(incidentExtent(incident))) });
+      const { center } = request.body ? await readInput(request, roadImportInput) : {};
+      if (center && !withinIncident(center, incident)) {
+        throw new RequestError("Center the map inside the incident or its aerial coverage before importing roads.");
+      }
+      const point = center ?? midpoint(incident.bounds);
+      const extent = incidentExtent(incident);
+      const latitudePadding = .004;
+      const longitudePadding = latitudePadding / Math.cos(point.latitude * Math.PI / 180);
+      const bounds = {
+        west: Math.max(extent.west, point.longitude - longitudePadding),
+        south: Math.max(extent.south, point.latitude - latitudePadding),
+        east: Math.min(extent.east, point.longitude + longitudePadding),
+        north: Math.min(extent.north, point.latitude + latitudePadding),
+      };
+      return json({ incident: setIncidentRoads(id, await loadRoads(bounds)) });
     }
     if (operation === "reports") {
       return json({ incident: submitIncidentReport(id, await readInput(request, reportInput, 1_610_000)) });

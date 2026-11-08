@@ -51,6 +51,19 @@ function findRoute(incident: Incident, origin: Coordinate, destination: Coordina
     !excluded?.has(segmentKey(road)));
   if (preview) usable.sort((a, b) => Number(b.state === "open") - Number(a.state === "open"));
   for (const road of usable) link(graph, add(graph, road.from, road.label), add(graph, road.to, road.label), road.state !== "open");
+  if (preview) {
+    const streets = usable.filter(road => road.id.startsWith("osm-"));
+    for (const passage of usable.filter(road => road.state === "open" && road.id.startsWith("field-"))) {
+      for (const end of [passage.from, passage.to]) {
+        const snap = project(end, streets);
+        if (!snap || snap.gap > 12) continue;
+        const junction = add(graph, snap.point, snap.road.label);
+        link(graph, junction, coordinateKey(snap.road.from), snap.road.state !== "open");
+        link(graph, junction, coordinateKey(snap.road.to), snap.road.state !== "open");
+        link(graph, coordinateKey(end), junction, true);
+      }
+    }
+  }
   const snappingRoads = preview ? usable : incident.roads;
   const start = project(origin, snappingRoads), finish = project(destination, snappingRoads);
   if (!start || (!preview && start.road.state !== "open") || start.gap > 20) {

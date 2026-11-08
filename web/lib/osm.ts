@@ -40,7 +40,9 @@ export async function loadRoads(bounds: GeographicBounds): Promise<Road[]> {
   overpass.searchParams.set("data", `[out:json][timeout:8];way["highway"~"^(${walkable})$"]["area"!="yes"](${box});out body geom;`);
   const fallback = new URL("https://api.openstreetmap.org/api/0.6/map.json");
   fallback.searchParams.set("bbox", boundsTuple(bounds).join(","));
-  for (const url of process.env.OVERPASS_URL ? [overpass] : [overpass, fallback]) {
+  const smallExtract = bounds.east - bounds.west <= .014 && bounds.north - bounds.south <= .014;
+  const sources = process.env.OVERPASS_URL ? [overpass] : smallExtract ? [fallback, overpass] : [overpass, fallback];
+  for (const url of sources) {
     try {
       const response = await fetch(url, {
         headers: { "User-Agent": userAgent, Accept: "application/json" }, signal: AbortSignal.timeout(9000),
