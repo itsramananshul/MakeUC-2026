@@ -128,10 +128,13 @@ export async function standardRoute(origin: Coordinate, destination: Coordinate,
   if (distanceMeters(origin, destination) < 1) return { ...unset, reason: "Choose a different destination." };
   const profile = routingProfiles[mode];
   const customOrigin = profile.origin();
-  if (!customOrigin && Date.now() - lastRoute < 1000) {
-    throw new RequestError("Wait briefly before requesting another route.", 429);
+  if (!customOrigin) {
+    const now = Date.now();
+    const delay = Math.max(0, lastRoute + 1000 - now);
+    if (delay > 3000) throw new RequestError("The route service is busy. Try again shortly.", 429);
+    lastRoute = now + delay;
+    if (delay) await new Promise(resolve => setTimeout(resolve, delay));
   }
-  lastRoute = Date.now();
   const pair = `${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}`;
   const base = (customOrigin || `https://routing.openstreetmap.de/routed-${profile.path}`).replace(/\/$/, "");
   const url = `${base}/route/v1/driving/${pair}?overview=full&geometries=geojson&alternatives=2&steps=true&radiuses=2000;2000`;
