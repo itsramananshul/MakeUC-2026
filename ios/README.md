@@ -1,6 +1,6 @@
-# AFTERMAP for iPhone
+# Gaslight Maps for iPhone
 
-Native SwiftUI and MapLibre client for the worldwide AFTERMAP incident map. The app opens directly to an interactive world map—there is no session code or drill join step.
+Native SwiftUI and MapLibre client for Gaslight Maps. The app opens directly to an interactive world map.
 
 ## Product flow
 
@@ -13,14 +13,14 @@ Native SwiftUI and MapLibre client for the worldwide AFTERMAP incident map. The 
 - Show `partial` and `unavailable` results explicitly. The client never substitutes an unchecked route through a known incident.
 - Continue to operate when there are zero incidents. If the server is unavailable, the app labels cached data as stale instead of presenting an unverified empty state.
 
-AFTERMAP is decision support. A complete route reflects the current shared evidence model; it is not a guarantee of real-world safety.
+Gaslight Maps is decision support. A complete route reflects the current shared evidence model; it is not a guarantee of real-world safety.
 
 ## Requirements
 
 - macOS with Xcode 16.4 or newer
 - XcodeGen (`brew install xcodegen`)
 - iOS 17 or newer
-- Network access for the OpenFreeMap vector basemap and the configured AFTERMAP server
+- Network access for the OpenFreeMap vector basemap and the configured Gaslight Maps server
 
 MapLibre Native is pinned to `7.0.0` through Swift Package Manager. `Package.resolved` records the exact revision.
 
@@ -45,7 +45,7 @@ xcodebuild -project Aftermap.xcodeproj -scheme Aftermap \
 
 ## Server configuration
 
-The default server is `https://aftermap-makeuc.vercel.app`. Open **Settings** in the search bar to change it. The app expects:
+The default server is `https://yourmapisgaslightingyou.us`. Open **Settings** in the search bar to change it. The app expects:
 
 - `GET /api/incidents`
 - `GET /api/incidents/{id}`

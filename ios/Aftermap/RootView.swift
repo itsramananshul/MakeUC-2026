@@ -47,7 +47,7 @@ struct RootView: View {
         .sheet(isPresented: $showingSettings) { SettingsSheet(store: store) }
         .sheet(isPresented: $showingIncident) { IncidentSheet(store: store, showingReport: $showingReport) }
         .sheet(isPresented: $showingReport) { ReportSheet(store: store) }
-        .alert("AFTERMAP", isPresented: Binding(
+        .alert("Gaslight Maps", isPresented: Binding(
             get: { store.notice != nil },
             set: { if !$0 { store.notice = nil } }
         )) {
@@ -144,7 +144,7 @@ struct RootView: View {
         VStack(spacing: 10) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("AFTERMAP").font(.caption.weight(.black)).tracking(1.4)
+                    Text("Gaslight Maps").font(.caption.weight(.black)).tracking(1.4)
                     switch store.connection {
                     case .loading:
                         Text("Loading the world map…")
@@ -286,7 +286,7 @@ private struct SettingsSheet: View {
                     Button("Refresh incident data") { Task { await store.refreshIncidents() } }
                 }
             }
-            .navigationTitle("AFTERMAP Settings")
+            .navigationTitle("Gaslight Maps Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

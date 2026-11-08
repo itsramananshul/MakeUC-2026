@@ -4,23 +4,29 @@ import { RequestError } from "./store";
 export const coordinate = z.object({
   latitude: z.number().min(-85).max(85), longitude: z.number().min(-180).max(180),
 });
+const reporterName = z.string().trim().min(1).max(40);
+const reportNote = z.string().trim().max(800).default("");
+const reportPhoto = z.string().max(1_600_000).regex(/^[A-Za-z0-9+/]+={0,2}$/).optional();
 export const incidentInput = z.object({
   name: z.string().trim().min(2).max(80),
   bounds: z.object({
     west: z.number().min(-180).max(180), east: z.number().min(-180).max(180),
     south: z.number().min(-85).max(85), north: z.number().min(-85).max(85),
   }),
+  observation: z.object({
+    displayName: reporterName, note: reportNote, photoBase64: reportPhoto,
+  }).refine(value => !!value.note || !!value.photoBase64, "Add a note or a photo.").optional(),
 });
 export const routeInput = z.object({ origin: coordinate, destination: coordinate });
 export const reportInput = z.object({
   id: z.string().regex(/^[A-Za-z0-9_-]{8,80}$/),
-  displayName: z.string().trim().min(1).max(40),
+  displayName: reporterName,
   edgeId: z.string().max(120).optional(),
   condition: z.enum(["open", "blocked", "hazard"]).optional(),
-  note: z.string().trim().max(800).default(""),
+  note: reportNote,
   evidenceType: z.enum(["manual", "text", "voice", "image"]),
   location: coordinate.optional(), from: coordinate.optional(), to: coordinate.optional(),
-  photoBase64: z.string().max(1_600_000).regex(/^[A-Za-z0-9+/]+={0,2}$/).optional(),
+  photoBase64: reportPhoto,
   confirmed: z.literal(true),
 }).refine(report => !!report.edgeId || !!report.location || !!(report.from && report.to), "Choose a passage or location.");
 

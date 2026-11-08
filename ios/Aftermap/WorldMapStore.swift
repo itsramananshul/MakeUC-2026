@@ -54,7 +54,12 @@ final class WorldMapStore: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        serverURL = defaults.string(forKey: "aftermap.serverURL") ?? "https://aftermap-makeuc.vercel.app"
+        if let savedServer = defaults.string(forKey: "aftermap.serverURL"),
+           URL(string: savedServer)?.host != "aftermap-makeuc.vercel.app" {
+            serverURL = savedServer
+        } else {
+            serverURL = "https://yourmapisgaslightingyou.us"
+        }
         displayName = defaults.string(forKey: "aftermap.displayName") ?? ""
     }
 
@@ -210,7 +215,7 @@ final class WorldMapStore: ObservableObject {
             let ordinary = try await client.ordinaryRoute(origin: origin, destination: destination)
             if let affected = incidents.first(where: { $0.bounds.intersects(ordinary.coordinates) }) {
                 routeState = .unavailable(
-                    "The proposed route enters \(affected.name), so AFTERMAP refused to display it without incident-road verification."
+                    "The proposed route enters \(affected.name), so Gaslight Maps withheld it pending incident-road verification."
                 )
             } else {
                 routeState = ordinary.status == .unavailable

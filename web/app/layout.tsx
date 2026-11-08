@@ -4,7 +4,7 @@ import "./globals.css";
 import "./world.css";
 
 export const metadata: Metadata = {
-  title: "AFTERMAP · World map",
+  title: "Gaslight Maps · World map",
   description: "A collaborative world map for disaster surveys, field reports, and candidate routes.",
 };
 export default function RootLayout({ children }: { children: React.ReactNode }) {

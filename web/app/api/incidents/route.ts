@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   try {
     const key = process.env.AFTERMAP_OPERATOR_KEY;
     if (key && !keyMatches(bearer(request), key)) throw new RequestError("Enter the workspace operator key.", 403);
-    const input = await readInput(request, incidentInput);
-    return json(createIncident(input.name, input.bounds), 201);
+    const input = await readInput(request, incidentInput, 1_610_000);
+    return json(createIncident(input.name, input.bounds, input.observation), 201);
   } catch (error) { return failure(error); }
 }

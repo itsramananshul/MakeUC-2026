@@ -98,6 +98,7 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
 .world-reports li > div { display: flex; justify-content: space-between; gap: 7px; }
 .world-reports li small, .world-reports li time { color: var(--world-muted); font-size: 11px; }
 .world-reports li p { font-size: 12px; margin: 5px 0 0; }
+.world-reports li.is-selected { background: #e2eefc; border-radius: 8px; padding-inline: 8px; }
 .sidebar-status { font-size: 12px; color: #234f59; background: #e7f0f1; padding: 8px; border-radius: 8px; }
 .incident-error, .incident-dialog .incident-error { color: #8a232f; }
 .sidebar-status.incident-error { background: #fcebed; }
@@ -136,8 +137,39 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
 .incident-form input:not([type=file]), .incident-form select, .incident-form textarea { min-width: 0; width: 100%; color: #17212b;
   background: #fff; border: 1px solid #d5dee4; border-radius: 8px; padding: 8px; font-size: 16px; }
 .incident-form textarea { resize: vertical; }
-.incident-form .form-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .incident-form .world-primary { min-height: 40px; }
+.incident-location { display: grid; gap: 7px; min-inline-size: 0; padding: 0; margin: 0; border: 0; }
+.incident-location legend { padding: 0; margin-bottom: 5px; font-size: 13px; font-weight: 630; }
+.incident-location-search, .incident-location-actions, .incident-photo-actions { display: flex; gap: 6px; }
+.incident-location-search button { flex: none; }
+.incident-location-actions button, .incident-photo-actions label { flex: 1; }
+.incident-location-results { list-style: none; max-height: 150px; overflow: auto; overscroll-behavior: contain; padding: 0; margin: 0; }
+.incident-location-results .world-result small { color: #52636e; }
+.incident-location-results .world-attribution { padding-inline: 7px; color: #52636e; }
+.incident-location-map { position: relative; min-height: clamp(134px, 24dvh, 195px); border: 1px solid #d5dee4;
+  border-radius: 10px; overflow: hidden; background: #e7eef2; }
+.incident-location-map .maplibregl-ctrl-group { border-radius: 8px; }
+.incident-dialog .incident-location-label { display: flex; align-items: center; gap: 5px; min-height: 19px; margin: 0; overflow-wrap: anywhere; }
+.incident-location-label svg { flex: none; color: #ad4c0e; }
+.incident-location .incident-error, .incident-photo .incident-error { margin: 0; }
+.incident-observation { border: 1px solid #d5dee4; border-radius: 10px; background: #fff; }
+.incident-observation summary { padding: 10px; cursor: pointer; font-size: 13px; font-weight: 650; }
+.incident-observation summary small { padding-left: 4px; color: #52636e; font-weight: 400; }
+.incident-observation > div, .incident-photo { display: grid; gap: 7px; }
+.incident-observation > div { padding: 0 10px 10px; }
+.incident-visibility { color: #52636e; font-size: 12px; line-height: 1.4; }
+.incident-form .incident-photo-actions label { position: relative; display: inline-flex; cursor: pointer; }
+.incident-photo-actions input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.incident-photo-actions label:focus-within { outline: 2px solid #176df1; outline-offset: 2px; }
+.incident-form .incident-photo-actions .incident-camera { display: none; }
+.incident-photo-preview { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 9px; align-items: center; }
+.incident-photo-preview img { object-fit: cover; border-radius: 7px; }
+.incident-photo-preview span { display: grid; gap: 4px; }
+.incident-photo-preview small { color: #52636e; overflow-wrap: anywhere; }
+.incident-spinner { animation: incident-spin .8s linear infinite; }
+@keyframes incident-spin { to { transform: rotate(360deg); } }
+@media (pointer: coarse) { .incident-form .incident-photo-actions .incident-camera { display: inline-flex; } }
+@media (prefers-reduced-motion: reduce) { .incident-spinner { animation: none; } }
 .world-segments { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 10px; background: #e2e9ed; }
 .world-segments button { border: 0; border-radius: 7px; background: transparent; min-height: 33px; }
 .world-segments button[aria-pressed="true"] { background: #fff; font-weight: 650; }
@@ -153,6 +185,9 @@ button.world-text { background: transparent; color: #0762bc; padding-inline: 2px
   .world-app:not(.with-world-sidebar) .world-stage { min-height: 100dvh; }
   .world-search input { font-size: 16px; }
   .world-action-row button, .incident-form .world-primary, .world-nav { min-height: 44px; }
+  .incident-location-actions button, .incident-location-search button, .incident-location-results button,
+  .incident-photo-actions label, .incident-observation summary { min-height: 44px; }
+  .incident-dialog .circle-button { width: 44px; height: 44px; }
   .world-legend { bottom: 27px; }
   .world-picking { width: max-content; max-width: calc(100% - 100px); }
 }

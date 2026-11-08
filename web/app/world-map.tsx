@@ -12,6 +12,8 @@ type Props = {
   start: Coordinate | null; destination: Coordinate | null; selectedRoad: string | null; aerial: boolean; picking: boolean;
   onCamera: (camera: Camera) => void; onPoint: (point: Coordinate) => void;
   onRoad: (id: string) => void; onIncident: (id: string) => void;
+  onReport?: (id: string) => void;
+  incidentPreview?: { center: Coordinate; bounds: GeographicBounds } | null;
 };
 const style = "https://tiles.openfreemap.org/styles/liberty";
 const collection = (features: Feature<Geometry>[] = []): FeatureCollection => ({ type: "FeatureCollection", features });
@@ -52,7 +54,7 @@ function addLayers(map: MapInstance) {
     "circle-color": "#e67429", "circle-stroke-color": "#fff", "circle-stroke-width": 2.5, "circle-radius": 8,
   } });
   map.addLayer({ id: "trip-pins", type: "circle", source: "markers", paint: {
-    "circle-color": ["case", ["==", ["get", "kind"], "start"], "#2678ef", "#d94050"],
+    "circle-color": ["match", ["get", "kind"], "start", "#2678ef", "incident", "#d46a20", "#d94050"],
     "circle-stroke-color": "#fff", "circle-stroke-width": 3, "circle-radius": 8,
   } });
 }
@@ -67,9 +69,12 @@ export default function WorldMap(props: Props) {
   useEffect(() => {
     if (!host.current) return;
     setWorkerUrl(new URL("maplibre-gl/dist/maplibre-gl-worker.mjs", import.meta.url).toString());
+    const initial = inputs.current.incidentPreview !== undefined ? inputs.current.focus : null;
     let view: MapInstance;
     try { view = new MapLibreMap({
-      container: host.current, style, center: [0, 24], zoom: 1.65, maxZoom: 21,
+      container: host.current, style,
+      center: initial && "point" in initial ? lngLat(initial.point) : [0, 24],
+      zoom: initial && "point" in initial ? initial.zoom ?? 14 : 1.65, maxZoom: 21,
       minZoom: 1, attributionControl: { compact: true }, pitchWithRotate: false,
     }); } catch {
       setMessage("The world map requires WebGL. Enable it in your browser and refresh."); return;
@@ -92,22 +97,25 @@ export default function WorldMap(props: Props) {
       const location = event.lngLat.wrap();
       const coordinate = { latitude: location.lat, longitude: location.lng };
       if (current.picking) { current.onPoint(coordinate); return; }
-      const layers = ["incident-pins", "incident-roads-hit"].filter(id => view.getLayer(id));
+      const layers = ["incident-pins", "reported-points", "incident-roads-hit"].filter(id => view.getLayer(id));
       if (!layers.length) return;
       const features = view.queryRenderedFeatures(event.point, { layers });
-      const item = features[0];
+      const item = features.find(feature => feature.layer.id === "reported-points") ?? features[0];
       if (item?.layer.id === "incident-pins") current.onIncident(String(item.properties.id));
+      if (item?.layer.id === "reported-points") current.onReport?.(String(item.properties.id));
       if (item?.layer.id === "incident-roads-hit") current.onRoad(String(item.properties.id));
     });
-    view.on("mouseenter", "incident-pins", () => { view.getCanvas().style.cursor = "pointer"; });
-    view.on("mouseleave", "incident-pins", () => { view.getCanvas().style.cursor = ""; });
+    for (const layer of ["incident-pins", "reported-points"]) {
+      view.on("mouseenter", layer, () => { view.getCanvas().style.cursor = inputs.current.picking ? "" : "pointer"; });
+      view.on("mouseleave", layer, () => { view.getCanvas().style.cursor = ""; });
+    }
     return () => { observer.disconnect(); map.current = null; view.remove(); };
   }, []);
 
   useEffect(() => {
     if (!ready || !map.current || !props.focus) return;
     const view = map.current;
-    const duration = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 700;
+    const duration = inputs.current.incidentPreview !== undefined || matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 700;
     if ("point" in props.focus) view.flyTo({ center: lngLat(props.focus.point), zoom: props.focus.zoom ?? 14, duration });
     else {
       const [west, south, east, north] = boundsTuple(props.focus.bounds);
@@ -123,7 +131,8 @@ export default function WorldMap(props: Props) {
       const [west, south, east, north] = boundsTuple(item.bounds);
       return point({ latitude: (south + north) / 2, longitude: (east + west) / 2 }, { id: item.id });
     }));
-    set("boundaries", props.active ? [polygon(props.active.bounds, { id: props.active.id })] : []);
+    set("boundaries", props.incidentPreview ? [polygon(props.incidentPreview.bounds, { id: "preview" })] :
+      props.active ? [polygon(props.active.bounds, { id: props.active.id })] : []);
     set("roads", (props.active?.roads ?? []).map(road => ({
       type: "Feature", geometry: { type: "LineString", coordinates: [lngLat(road.from), lngLat(road.to)] },
       properties: { id: road.id, state: road.state, selected: props.selectedRoad === road.id ? "yes" : "no" },
@@ -137,8 +146,9 @@ export default function WorldMap(props: Props) {
     set("markers", [
       ...(props.start ? [point(props.start, { kind: "start" })] : []),
       ...(props.destination ? [point(props.destination, { kind: "destination" })] : []),
+      ...(props.incidentPreview ? [point(props.incidentPreview.center, { kind: "incident" })] : []),
     ]);
-  }, [ready, props.incidents, props.active, props.route, props.start, props.destination, props.selectedRoad]);
+  }, [ready, props.incidents, props.active, props.route, props.start, props.destination, props.selectedRoad, props.incidentPreview]);
 
   const images = props.aerial && props.active ? props.active.surveys ?? (props.active.imagery ? [props.active.imagery] : []) : [];
   const imageKey = images.map(image => image.url).join("|");

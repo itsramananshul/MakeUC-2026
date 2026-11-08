@@ -8,6 +8,7 @@ import {
 type ReportInput = Omit<FieldReport, "at" | "evidenceUrl"> & {
   from?: Coordinate; to?: Coordinate; photoBase64?: string; confirmed: true;
 };
+type InitialObservation = Pick<ReportInput, "displayName" | "note" | "photoBase64">;
 
 const hash = (value: string) => createHash("sha256").update(value).digest();
 export function keyMatches(candidate: string, expected: string) {
@@ -51,7 +52,7 @@ export function authorizeIncident(id: string, key: string) {
   const expected = Buffer.from(row.key_hash as string, "hex");
   if (!timingSafeEqual(hash(key), expected)) throw new RequestError("Enter the incident access key.", 403);
 }
-export function createIncident(name: string, bounds: GeographicBounds) {
+export function createIncident(name: string, bounds: GeographicBounds, observation?: InitialObservation) {
   const { west, south, east, north } = bounds;
   const latitude = (south + north) / 2;
   if (east <= west || north <= south ||
@@ -68,7 +69,24 @@ export function createIncident(name: string, bounds: GeographicBounds) {
     version: 1, roadCount: 0, roads: [], reports: [],
   };
   const key = randomBytes(24).toString("base64url");
-  db.prepare("INSERT INTO incidents VALUES (?, ?, ?)").run(incident.id, hash(key).toString("hex"), JSON.stringify(incident));
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    if (observation) {
+      const report: FieldReport = {
+        id: randomBytes(12).toString("base64url"), displayName: observation.displayName,
+        note: observation.note, at: new Date().toISOString(),
+        evidenceType: observation.photoBase64 ? "image" : "text",
+        location: { latitude, longitude: (west + east) / 2 },
+      };
+      if (observation.photoBase64) report.evidenceUrl = saveEvidence(incident.id, report.id, observation.photoBase64);
+      incident.reports.push(report);
+    }
+    db.prepare("INSERT INTO incidents VALUES (?, ?, ?)").run(incident.id, hash(key).toString("hex"), JSON.stringify(incident));
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
   return { incident, key };
 }
 
@@ -177,17 +195,18 @@ export function submitIncidentReport(id: string, report: ReportInput) {
       id: report.id, edgeId: road?.id, displayName: report.displayName, condition: report.condition,
       note: report.note, at: now, evidenceType: report.evidenceType, location: report.location,
     };
-    if (report.photoBase64) {
-      const bytes = Buffer.from(report.photoBase64, "base64");
-      if (bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff || bytes.length > 1_200_000) {
-        throw new RequestError("Attach a JPEG photo under 1.2 MB.");
-      }
-      database().prepare("INSERT INTO incident_evidence VALUES (?, ?, ?)").run(id, report.id, bytes);
-      observation.evidenceUrl = `/api/incidents/${id}/evidence/${report.id}`;
-    }
+    if (report.photoBase64) observation.evidenceUrl = saveEvidence(id, report.id, report.photoBase64);
     incident.reports.unshift(observation);
     return true;
   });
+}
+function saveEvidence(incidentId: string, reportId: string, encoded: string) {
+  const bytes = Buffer.from(encoded, "base64");
+  if (bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff || bytes.length > 1_200_000) {
+    throw new RequestError("Attach a JPEG photo under 1.2 MB.");
+  }
+  database().prepare("INSERT INTO incident_evidence VALUES (?, ?, ?)").run(incidentId, reportId, bytes);
+  return `/api/incidents/${incidentId}/evidence/${reportId}`;
 }
 export function getEvidence(id: string, reportId: string): Uint8Array | null {
   const row = init().prepare("SELECT bytes FROM incident_evidence WHERE incident_id = ? AND id = ?").get(id, reportId);
