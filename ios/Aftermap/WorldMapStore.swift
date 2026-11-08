@@ -107,6 +107,14 @@ final class WorldMapStore: ObservableObject {
         serverURL = Self.resolvedServerURL(defaults: defaults)
         displayName = defaults.string(forKey: "aftermap.displayName") ?? ""
 #if DEBUG
+        if let testServerURL = ProcessInfo.processInfo.environment["AFTERMAP_TEST_SERVER_URL"],
+           !testServerURL.isEmpty {
+            serverURL = testServerURL
+        }
+        if let testReportKey = ProcessInfo.processInfo.environment["AFTERMAP_TEST_REPORT_KEY"],
+           !testReportKey.isEmpty {
+            reportKey = testReportKey
+        }
         if ProcessInfo.processInfo.arguments.contains("-aftermapIncidentPreview") ||
             ProcessInfo.processInfo.environment["AFTERMAP_INCIDENT_PREVIEW"] == "1" {
             let bounds = IncidentBounds(west: -84.520, south: 39.094, east: -84.504, north: 39.108)

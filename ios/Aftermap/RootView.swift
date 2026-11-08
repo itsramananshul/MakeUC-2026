@@ -836,6 +836,7 @@ private struct DisasterHubSheet: View {
                                     .foregroundStyle(.tertiary)
                             }
                         }
+                        .accessibilityIdentifier("incident.open.\(incident.id)")
                     }
                     .listStyle(.plain)
                 }

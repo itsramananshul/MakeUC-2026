@@ -1,6 +1,15 @@
 import XCTest
 
 final class AftermapUITests: XCTestCase {
+    private func firstExisting(_ candidates: [XCUIElement], timeout: TimeInterval = 3) -> XCUIElement? {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if let match = candidates.first(where: \.exists) { return match }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        } while Date() < deadline
+        return candidates.first(where: \.exists)
+    }
+
     func testAppOpensDirectlyToWorldwideMap() {
         let app = XCUIApplication()
         app.launchEnvironment["AFTERMAP_AUTOMATIC_LOCATION"] = "0"
@@ -151,6 +160,81 @@ final class AftermapUITests: XCTestCase {
         let confirmation = app.alerts["Gaslight Maps"]
         XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
         XCTAssertTrue(confirmation.staticTexts["Field report added to Preview Incident."].exists)
+        confirmation.buttons["OK"].tap()
+    }
+
+    func testGeoTIFFFilesImporterPublishesSurvey() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let serverURL = environment["AFTERMAP_IMPORT_TEST_SERVER_URL"],
+              let reportKey = environment["AFTERMAP_IMPORT_TEST_REPORT_KEY"],
+              let incidentID = environment["AFTERMAP_IMPORT_TEST_INCIDENT_ID"] else {
+            throw XCTSkip("Set the isolated importer-test server, report key, and incident ID to run this test.")
+        }
+        let fileLabels = ["detail", "northwest", "northeast", "Riverfront-west", "Riverfront-east"]
+
+        let app = XCUIApplication()
+        app.launchEnvironment["AFTERMAP_AUTOMATIC_LOCATION"] = "0"
+        app.launchEnvironment["AFTERMAP_TEST_SERVER_URL"] = serverURL
+        app.launchEnvironment["AFTERMAP_TEST_REPORT_KEY"] = reportKey
+        app.launch()
+
+        let report = app.buttons["disaster.report"]
+        XCTAssertTrue(report.waitForExistence(timeout: 15))
+        report.tap()
+
+        let incident = app.buttons["incident.open.\(incidentID)"]
+        XCTAssertTrue(incident.waitForExistence(timeout: 15))
+        incident.tap()
+
+        let addSurvey = app.buttons["incident.addSurvey"]
+        XCTAssertTrue(addSurvey.waitForExistence(timeout: 15))
+        addSurvey.tap()
+
+        let documents = XCUIApplication(bundleIdentifier: "com.apple.DocumentsApp")
+
+        let pickerAlreadyShowsLocalStorage = app.navigationBars["On My iPhone"].exists
+            || documents.navigationBars["On My iPhone"].exists
+        if !pickerAlreadyShowsLocalStorage, let browse = firstExisting([
+            documents.tabBars.buttons["Browse"].firstMatch,
+            app.tabBars.buttons["Browse"].firstMatch,
+            documents.buttons["Browse"].firstMatch,
+            app.buttons["Browse"].firstMatch,
+        ], timeout: 1) { browse.tap() }
+
+        if !app.navigationBars["On My iPhone"].exists, let local = firstExisting([
+            documents.staticTexts["On My iPhone"].firstMatch, documents.buttons["On My iPhone"].firstMatch,
+            app.staticTexts["On My iPhone"].firstMatch, app.buttons["On My iPhone"].firstMatch,
+        ]) { local.tap() }
+
+        let folder = firstExisting([
+            documents.staticTexts["Cincinnati Import Verification"].firstMatch,
+            documents.buttons["Cincinnati Import Verification"].firstMatch,
+            app.staticTexts["Cincinnati Import Verification"].firstMatch,
+            app.buttons["Cincinnati Import Verification"].firstMatch,
+        ], timeout: 5)
+        XCTAssertNotNil(folder, "The seeded folder must be visible in the native Files picker.")
+        folder?.tap()
+
+        if let select = firstExisting([documents.buttons["Select"], app.buttons["Select"]], timeout: 1) {
+            select.tap()
+        }
+        for fileLabel in fileLabels {
+            let predicate = NSPredicate(format: "label CONTAINS[c] %@", fileLabel)
+            let file = firstExisting([
+                app.descendants(matching: .any).matching(predicate).firstMatch,
+                documents.descendants(matching: .any).matching(predicate).firstMatch,
+            ], timeout: 5)
+            XCTAssertNotNil(file, "Missing \(fileLabel) in the native Files picker.")
+            file?.tap()
+        }
+
+        let open = firstExisting([documents.buttons["Open"], app.buttons["Open"]], timeout: 5)
+        XCTAssertNotNil(open, "The native Files picker did not expose its Open action.")
+        open?.tap()
+
+        let confirmation = app.alerts["Gaslight Maps"]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 120))
+        XCTAssertTrue(confirmation.staticTexts["Aerial survey published and aligned to the map."].exists)
         confirmation.buttons["OK"].tap()
     }
 }
