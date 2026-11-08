@@ -43,6 +43,7 @@ export default function VenezuelaMap() {
             </button>
             <button type="button" className="world-secondary" onClick={() => setFocus({ bounds: country })}>Show Venezuela</button>
           </div>
+          <p><Link href="/venezuela/catia-la-mar">View Catia La Mar aerial imagery</Link></p>
           <ul className="venezuela-locations" aria-label="Areas with imagery">
             {locations.map(({ name, zoom, ...point }) => <li key={name}>
               <button type="button" className="world-result" onClick={() => setFocus({ point, zoom })}>

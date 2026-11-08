@@ -10,6 +10,10 @@ type ReportInput = Omit<FieldReport, "at" | "evidenceUrl"> & {
   from?: Coordinate; to?: Coordinate; trace?: Coordinate[]; photoBase64?: string; confirmed: true;
 };
 type InitialObservation = Pick<ReportInput, "displayName" | "note" | "photoBase64">;
+type SurveyAsset = { bounds: GeographicBounds; bytes: Buffer };
+type InitialSurvey = SurveyAsset & {
+  source: string; timestamp: string; detail?: SurveyAsset[]; jobId?: string;
+};
 type StoredIncident = Incident & { unpublishedSurveys?: IncidentImagery[] };
 
 const hash = (value: string) => createHash("sha256").update(value).digest();
@@ -26,6 +30,9 @@ function init() {
     CREATE TABLE IF NOT EXISTS incident_jobs (
       incident_id TEXT NOT NULL, id TEXT NOT NULL, state TEXT NOT NULL, created_at INTEGER NOT NULL,
       PRIMARY KEY (incident_id, id)
+    );
+    CREATE TABLE IF NOT EXISTS aerial_imports (
+      id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, incident_id TEXT
     );
     CREATE TABLE IF NOT EXISTS incident_evidence (
       incident_id TEXT NOT NULL, id TEXT NOT NULL, bytes BLOB NOT NULL,
@@ -64,7 +71,28 @@ export function authorizeIncident(id: string, key: string) {
   const expected = Buffer.from(row.key_hash as string, "hex");
   if (!timingSafeEqual(hash(key), expected)) throw new RequestError("Enter the incident access key.", 403);
 }
-export function createIncident(name: string, bounds: GeographicBounds, observation?: InitialObservation) {
+function storeSurvey(bytes: Buffer, data: Omit<IncidentImagery, "url" | "detailTiles">, detail: SurveyAsset[]) {
+  const insert = database().prepare("INSERT INTO imagery VALUES (?, ?)");
+  function saveAsset(buffer: Buffer) {
+    const assetId = randomBytes(16).toString("hex");
+    insert.run(assetId, buffer);
+    return `/api/imagery/${assetId}`;
+  }
+  const survey: IncidentImagery = { ...data, url: saveAsset(bytes) };
+  if (detail.length) survey.detailTiles = detail.map(tile => ({ bounds: tile.bounds, url: saveAsset(tile.bytes) }));
+  return survey;
+}
+
+export function recordAerialImport(id: string) {
+  init().prepare("INSERT INTO aerial_imports (id, created_at) VALUES (?, ?)").run(id, Date.now());
+}
+
+export function aerialImport(id: string) {
+  return init().prepare("SELECT created_at, incident_id FROM aerial_imports WHERE id = ?").get(id) as
+    { created_at: number; incident_id: string | null } | undefined;
+}
+
+export function createIncident(name: string, bounds: GeographicBounds, observation?: InitialObservation, survey?: InitialSurvey) {
   const { west, south, east, north } = bounds;
   const latitude = (south + north) / 2;
   if (east <= west || north <= south ||
@@ -80,9 +108,22 @@ export function createIncident(name: string, bounds: GeographicBounds, observati
     id: randomBytes(12).toString("base64url"), name, kind: "incident", bounds, imagery: null,
     version: 1, roadCount: 0, roads: [], reports: [],
   };
-  const key = randomBytes(24).toString("base64url");
+  const key = survey?.jobId ?? randomBytes(24).toString("base64url");
   db.exec("BEGIN IMMEDIATE");
   try {
+    if (survey?.jobId) {
+      const job = aerialImport(survey.jobId);
+      if (!job) throw new RequestError("That aerial import was not found.", 404);
+      if (job.incident_id) {
+        const existing = getIncident(job.incident_id);
+        db.exec("COMMIT");
+        return { incident: existing, key };
+      }
+    }
+    if (survey) {
+      incident.imagery = storeSurvey(survey.bytes, { bounds, source: survey.source, timestamp: survey.timestamp }, survey.detail ?? []);
+      incident.surveys = [incident.imagery];
+    }
     if (observation) {
       const report: FieldReport = {
         id: randomBytes(12).toString("base64url"), displayName: observation.displayName,
@@ -94,6 +135,7 @@ export function createIncident(name: string, bounds: GeographicBounds, observati
       incident.reports.push(report);
     }
     db.prepare("INSERT INTO incidents VALUES (?, ?, ?)").run(incident.id, hash(key).toString("hex"), JSON.stringify(incident));
+    if (survey?.jobId) db.prepare("UPDATE aerial_imports SET incident_id = ? WHERE id = ?").run(incident.id, survey.jobId);
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
@@ -168,16 +210,9 @@ export function saveIncidentImage(id: string, bytes: Buffer, data: Omit<Incident
       throw new RequestError("This image is outside the selected incident area.", 422);
     }
     const db = database();
-    const insert = db.prepare("INSERT INTO imagery VALUES (?, ?)");
-    function saveAsset(buffer: Buffer) {
-      const assetId = randomBytes(16).toString("hex");
-      insert.run(assetId, buffer);
-      return `/api/imagery/${assetId}`;
-    }
     const surveys = incident.surveys ?? (incident.imagery ? [incident.imagery] : []);
     const unpublished = incident.unpublishedSurveys ?? [];
-    const newest: IncidentImagery = { ...data, url: saveAsset(bytes) };
-    if (detail.length) newest.detailTiles = detail.map(tile => ({ bounds: tile.bounds, url: saveAsset(tile.bytes) }));
+    const newest = storeSurvey(bytes, data, detail);
     if (surveys.length + unpublished.length >= 12) {
       const oldest = unpublished.shift() ?? surveys.shift();
       if (oldest) {

@@ -15,7 +15,7 @@ function workerUrl(path: string) {
   return url;
 }
 
-export async function startDroneJob(code: string, files: File[]) {
+export async function startDroneJob(code: string | undefined, files: File[]) {
   const worker = workerUrl("/task/new");
   if (files.length < 5 || files.length > 40 || files.some(file => !/\.(jpe?g|png)$/i.test(file.name))) {
     throw new RequestError("Select 5 to 40 overlapping, geotagged JPEG or PNG aerial photos.");
@@ -27,11 +27,11 @@ export async function startDroneJob(code: string, files: File[]) {
     throw new RequestError("An aerial processing job is already active for this drill.", 409);
   }
   const id = randomUUID();
-  const job: Job = { code, id, startedAt: Date.now() };
+  const job: Job = { code: code ?? id, id, startedAt: Date.now() };
   jobs.set(id, job);
   const form = new FormData();
   files.forEach(file => form.append("images", file, file.name));
-  form.append("name", `AFTERMAP ${code}`);
+  form.append("name", `AFTERMAP ${code ?? id}`);
   form.append("outputs", JSON.stringify([orthophotoPath]));
   form.append("options", JSON.stringify([{ name: "orthophoto-resolution", value: 10 }, { name: "fast-orthophoto", value: true }, { name: "max-concurrency", value: 4 }]));
   try {

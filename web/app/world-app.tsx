@@ -13,6 +13,7 @@ import { fetchJson, incidentPath, postJson } from "@/lib/world-client";
 import { AccessKey, CreateIncident, Modal, RemoveAerial, ReportIncident, ResolveIncident, SurveyUpload } from "./incident-dialogs";
 import PlaceFinder from "./place-finder";
 import WorldMap from "./world-map";
+import PhotoOnlyUpload from "./photo-only-upload";
 import { useLiveNavigation } from "./use-live-navigation";
 
 type Focus = { point: Coordinate; zoom?: number } | { bounds: GeographicBounds };
@@ -224,10 +225,12 @@ export default function WorldApp() {
       return next.resolvedAt ? others : [next, ...others];
     });
   }
-  function create(next: Incident, key: string) {
+  const [photoOnly, setPhotoOnly] = useState(true);
+
+  function create(next: Incident, key: string, fromImagery = false) {
     chooseIncident(next.id); applyIncident(next); changeAccess(key, next.id);
-    setFocus({ bounds: next.bounds }); setModal("access");
-    setMessage("Incident created. Share its access key with your field team.");
+    setFocus({ bounds: next.bounds }); setModal(fromImagery ? null : "access");
+    setMessage(fromImagery ? "Aerial imagery added to the shared map." : "Incident created. Share its access key with your field team.");
   }
 
   function choosePlace(item: Place) {
@@ -723,8 +726,13 @@ export default function WorldApp() {
       {active && !active.resolvedAt && <div className="world-legend" aria-label="Road legend"><span><i /> Unverified</span><span><i /> Open</span><span><i /> Blocked</span><span><i /> Hazard or dispute</span></div>}
     </section>
 
-    {modal === "create" && <Modal title="Report an incident" description="Mark the affected area and add an observation or photo if you have one." onClose={() => setModal(null)}>
-      <CreateIncident camera={camera} place={place} onCreate={create} />
+    {modal === "create" && <Modal title="Report an incident" description="Upload aerial images or enter the incident details." onClose={() => setModal(null)}>
+      <div className="world-segments" aria-label="Incident submission method">
+        <button type="button" aria-pressed={photoOnly} onClick={() => setPhotoOnly(true)}>Upload aerial images</button>
+        <button type="button" aria-pressed={!photoOnly} onClick={() => setPhotoOnly(false)}>Report details</button>
+      </div>
+      {photoOnly ? <PhotoOnlyUpload onImport={(next, key) => create(next, key, true)} />
+        : <CreateIncident camera={camera} place={place} onCreate={create} />}
     </Modal>}
     {modal === "access" && active && <Modal title="Incident access" description="Use the incident key to submit reports, import roads, or upload imagery." onClose={() => setModal(null)}>
       <AccessKey current={access} onSave={key => { changeAccess(key); setModal(null); }} />
