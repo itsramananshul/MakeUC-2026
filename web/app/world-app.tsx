@@ -71,6 +71,7 @@ export default function WorldApp() {
   const [routing, setRouting] = useState(false);
   const [modal, setModal] = useState<ModalKind>(null);
   const [picking, setPicking] = useState<Picking>(null);
+  const keepTripViewport = useRef(false);
   const [points, setPoints] = useState<Coordinate[]>([]);
   const [tracing, setTracing] = useState(false);
   const [roadId, setRoadId] = useState<string | null>(null);
@@ -249,6 +250,10 @@ export default function WorldApp() {
     setPicking(null);
     if (side === "start") setStart(point); else setDestination(point);
   }
+  function pickTripPoint(side: Stop) {
+    keepTripViewport.current = true;
+    setPicking(side);
+  }
   function choosePoint(point: Coordinate) {
     if (picking === "start" || picking === "destination") {
       setTripPoint(picking, { ...point, label: "Dropped pin" });
@@ -297,7 +302,9 @@ export default function WorldApp() {
         });
         if (controller.signal.aborted) return;
         setRoute(next); setRouteIndex(0);
-        if (next.coordinates.length > 1) setFocus({ bounds: routeBounds([start!, destination!, ...next.coordinates]) });
+        if (!keepTripViewport.current && next.coordinates.length > 1) {
+          setFocus({ bounds: routeBounds([start!, destination!, ...next.coordinates]) });
+        }
       } catch (error) { if (!controller.signal.aborted) { setRoute(null); setRouteError(getMessage(error)); } }
       finally { if (!controller.signal.aborted) setRouting(false); }
     }
@@ -333,7 +340,10 @@ export default function WorldApp() {
     finally { setScanningAerial(false); }
   }
   function startTrip(point?: Place) {
-    if (!tripOpen) setMode((active && !active.resolvedAt) || (point && incidents.some(incident => withinIncident(point, incident))) ? "walking" : "driving");
+    if (!tripOpen) {
+      keepTripViewport.current = false;
+      setMode((active && !active.resolvedAt) || (point && incidents.some(incident => withinIncident(point, incident))) ? "walking" : "driving");
+    }
     setTripOpen(true); setIncidentPanel(false); setShowSteps(false); setSheet(1); setMobileSearch(false);
     if (!tripOpen || point) resetRoute();
     if (!start && deviceOrigin) setStart(deviceOrigin);
@@ -556,8 +566,8 @@ export default function WorldApp() {
           <details className="direction-pick-options">
             <summary>Pick a point on the map</summary>
             <div className="world-action-row">
-              <button className="world-secondary" type="button" onClick={() => setPicking("start")}>Pick start on map</button>
-              <button className="world-secondary" type="button" onClick={() => setPicking("destination")}>Pick destination on map</button>
+              <button className="world-secondary" type="button" onClick={() => pickTripPoint("start")}>Pick start on map</button>
+              <button className="world-secondary" type="button" onClick={() => pickTripPoint("destination")}>Pick destination on map</button>
             </div>
           </details>
           {routing && <small role="status" className="direction-search-status">Finding routes…</small>}
@@ -698,7 +708,8 @@ export default function WorldApp() {
         navigationZoom={liveTrip && followNavigation ? navigationLimits[liveTrip.mode].zoom : undefined}
         onFreePan={() => setFollowNavigation(false)}
         start={tripOpen && !liveTrip ? start : null} destination={tripOpen ? destination : place}
-        selectedRoad={roadId} aerial={aerial} picking={!!picking} draftPassage={picking === "trace" ? points : undefined} aerialFlagIds={aerialFlagIds} sidebarVisible={sidebar} onCamera={setCamera}
+        selectedRoad={roadId} aerial={aerial} picking={!!picking} pickingTripPoint={picking === "start" || picking === "destination"}
+        draftPassage={picking === "trace" ? points : undefined} aerialFlagIds={aerialFlagIds} sidebarVisible={sidebar} onCamera={setCamera}
         onPoint={choosePoint} onRoad={selectRoad} onIncident={chooseIncident} onReport={selectReport} />
       {!sidebar && <button className="world-restore circle-button" aria-label="Show sidebar" onClick={() => setSidebar(true)}><PanelLeft size={18} /></button>}
       {picking && <div className={picking === "trace" ? "world-picking world-tracing" : "world-picking"}><span role="status">{pickLabel}</span>

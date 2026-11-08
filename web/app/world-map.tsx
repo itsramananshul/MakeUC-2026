@@ -11,6 +11,7 @@ type Focus = { point: Coordinate; zoom?: number } | { bounds: GeographicBounds }
 type Props = {
   incidents: IncidentSummary[]; active: Incident | null; focus: Focus | null; route: IncidentRoute | null;
   start: Coordinate | null; destination: Coordinate | null; selectedRoad: string | null; aerial: boolean; picking: boolean;
+  pickingTripPoint?: boolean;
   onCamera: (camera: Camera) => void; onPoint: (point: Coordinate) => void;
   onRoad: (id: string) => void; onIncident: (id: string) => void;
   onReport?: (id: string) => void;
@@ -189,7 +190,7 @@ export default function WorldMap(props: Props) {
     const mobileOverlay = app?.classList.contains("world-main-map");
     const desktop = matchMedia("(min-width: 741px)");
     function resizePadding() {
-      if (!view) return;
+      if (!view || inputs.current.pickingTripPoint) return;
       const rect = sidebar?.getBoundingClientRect();
       const left = desktop.matches && rect ? Math.ceil(rect.width) : 0;
       const bottom = !desktop.matches && mobileOverlay && rect && app ? Math.min(Math.ceil(rect.height), Math.round(app.clientHeight * .53)) : 0;
@@ -202,6 +203,10 @@ export default function WorldMap(props: Props) {
     resizePadding();
     return () => { observer.disconnect(); desktop.removeEventListener("change", resizePadding); };
   }, [ready, props.sidebarVisible]);
+
+  useEffect(() => {
+    if (props.pickingTripPoint) map.current?.stop();
+  }, [props.pickingTripPoint]);
 
   useEffect(() => {
     if (!ready || !map.current || !props.focus) return;
