@@ -2,8 +2,9 @@
 
 import {
   ArrowLeft, ArrowRight, ChevronRight, Crosshair, Footprints, Globe, KeyRound, Layers3,
-  MapPin, Navigation2, PanelLeft, Plus, Route, Satellite, Search, ShieldAlert, X,
+  MapPin, PanelLeft, Plus, Route, Satellite, Search, ShieldAlert, X,
 } from "lucide-react";
+import Image from "next/image";
 import { useEffect, useState, type FormEvent } from "react";
 import { distanceMeters, within, type Coordinate, type GeographicBounds, type Incident, type IncidentRoute, type IncidentSummary, type Place } from "@/lib/incident-types";
 import { fetchJson, incidentPath, postJson } from "@/lib/world-client";
@@ -217,7 +218,7 @@ export default function WorldApp() {
     {sidebar && <aside className="world-sidebar" aria-label="Map controls">
       <header className="world-brand">
         <button className="wordmark" type="button" onClick={() => { chooseIncident(""); setFocus({ point: earth, zoom: 1.65 }); }}>
-          <span><Navigation2 size={16} fill="currentColor" /></span>Gaslight Maps
+          <Image src="/icon.png" alt="" width={28} height={28} unoptimized />Gaslight Maps
         </button>
         <button className="circle-button" aria-label="Hide sidebar" onClick={() => setSidebar(false)}><PanelLeft size={17} /></button>
       </header>

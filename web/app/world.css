@@ -27,8 +27,7 @@
 .world-brand { height: 65px; padding: 0 15px 0 18px; display: flex; align-items: center; justify-content: space-between; flex: none; }
 .wordmark { display: flex; align-items: center; gap: 9px; background: transparent; border: 0;
   font-size: 20px; font-weight: 730; letter-spacing: -.055em; padding: 0; }
-.wordmark span { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: #1478e9; color: white; }
-.wordmark svg { transform: rotate(15deg); }
+.wordmark img { display: block; flex: none; border-radius: 8px; }
 .circle-button { width: 34px; height: 34px; border: 0; padding: 0; border-radius: 9px; background: #63798613;
   display: inline-grid; place-items: center; flex: none; }
 .circle-button:hover { background: #63798625; }
